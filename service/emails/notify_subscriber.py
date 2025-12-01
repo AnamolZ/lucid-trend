@@ -1,3 +1,4 @@
+
 import smtplib
 import json
 from email.mime.text import MIMEText
@@ -5,7 +6,6 @@ from email.mime.multipart import MIMEMultipart
 from service.mongodb.fetch_emails import get_verified_emails
 from template.notify_subscriber import notify_subscriber_template
 from service.data_cleaning.gemini import email_title, build_content_with_gemini
-from concurrent.futures import ThreadPoolExecutor
 
 def send_noreply_email(to_email, subject, body_html, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD):
     SMTP_PORT = 587
@@ -27,28 +27,13 @@ def send_noreply_email(to_email, subject, body_html, SMTP_SERVER, SMTP_USER, SMT
         print(f"Email sent successfully to {to_email}")
         return True
     except Exception as e:
-        print(f"Failed to send email: {e}")
         return False
     
-# def notify_subscribers(model, MONGO_URI, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD):
-#     with open("extracted_data.json", "r", encoding="utf-8") as f:
-#         news_json = json.load(f)
-
-#     for e_address in get_verified_emails(MONGO_URI):
-#         news_content = build_content_with_gemini(news_json, model)
-#         ready_html_content = notify_subscriber_template(email_title(model), news_content, e_address)
-#         send_noreply_email(e_address, email_title(model), ready_html_content, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)
-
 def notify_subscribers(model, MONGO_URI, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD):
-    with open("extracted_data.json", "r", encoding="utf-8") as f:
+    with open("service/blog/extracted_data.json", "r", encoding="utf-8") as f:
         news_json = json.load(f)
 
-    emails = list(get_verified_emails(MONGO_URI))
-
-    def process(email):
-        content = build_content_with_gemini(news_json, model)
-        html = notify_subscriber_template(email_title(model), content, email)
-        send_noreply_email(email, email_title(model), html, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)
-
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        executor.map(process, emails)
+    for e_address in get_verified_emails(MONGO_URI):
+        news_content = build_content_with_gemini(news_json, model)
+        ready_html_content = notify_subscriber_template(email_title(model), news_content, e_address)
+        send_noreply_email(e_address, email_title(model), ready_html_content, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)

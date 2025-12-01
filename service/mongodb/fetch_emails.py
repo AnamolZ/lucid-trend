@@ -1,3 +1,4 @@
+
 from pymongo import MongoClient
 
 def get_verified_emails(MONGO_URI):

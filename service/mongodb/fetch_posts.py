@@ -1,3 +1,4 @@
+
 from pymongo import MongoClient
 
 def fetch_posts(MONGO_URI, DATABASE_NAME, COLLECTION_NAME):

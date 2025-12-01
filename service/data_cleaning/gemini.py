@@ -1,3 +1,4 @@
+
 import json
 
 def extract(raw, model):
@@ -106,6 +107,32 @@ def image_suggestion(model, content):
         prompt,
         generation_config={"response_mime_type": "text/plain"}
     )
-    keyword = response.text.strip()
-    print(keyword)
-    return keyword
+
+    return response.text.strip()
+
+def image_generation_prompt(model, content):
+    prompt = f"""
+    Based strictly on the article content, generate a detailed, professional prompt suitable 
+    for AI image generation. The prompt should describe a visually-rich, high-quality image 
+    that matches the key themes, concepts, and mood of the article. Include:
+
+    - Key subjects, objects, or characters
+    - Relevant environment, background, or setting
+    - Lighting, colors, and atmosphere
+    - Style or artistic tone (e.g., realistic, futuristic, minimalistic, cinematic)
+    
+    Requirements:
+    - Output must be a single descriptive paragraph suitable as a prompt for image generation.
+    - No generic or vague terms. Be specific and visually descriptive.
+    - Do not include instructions for the AI, just the descriptive prompt.
+    
+    Article Content:
+    "{content}"
+    
+    Respond only with the image generation prompt.
+    """
+    response = model.generate_content(
+        prompt,
+        generation_config={"response_mime_type": "text/plain"}
+    )
+    return response.text.strip()
