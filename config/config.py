@@ -11,7 +11,7 @@ class NewsEngineConfig:
         Produce only a clean news bulletin.
 
         Task:
-        Use google_search to collect the top 10 most important technology news from the last 24 hours.
+        Use google_search to collect the top 2 most important technology news from the last 24 hours.
 
         Coverage:
         - Programming (languages, frameworks, open-source updates)
@@ -75,7 +75,7 @@ class DeepSearchConfig:
         - Maintain a professional, neutral tone.
         - Include a structured clean output with:
             * A headline title field
-            * ~250-word deep-dive summary
+            * ~350-word deep-dive summary
             * 3–5 bullet-point key facts
         - No internal commentary, chain-of-thought, or explanation of process.
 
@@ -97,7 +97,7 @@ class RootAgentConfig:
 
         1. Fetch Headlines:
            Invoke the `NewsFindingAgent` tool.
-           Request: "Retrieve the top 10 most important technology news headlines published within the last 24 hours."
+           Request: "Retrieve the top 2 most important technology news headlines published within the last 24 hours."
            The tool will return a clean list of verified headlines.
 
         2. Perform Deep Analysis:
@@ -109,6 +109,22 @@ class RootAgentConfig:
            – Cross-reference facts across multiple reputable publishers
            – Deliver a professional, neutral, evidence-based report for every valid headline
 
-        3. Final Delivery:
-           Return the complete set of deep-dive reports produced by the `DeepInvestigator` as the final response to the user.
+        3. Final Delivery (Formatting):
+            Consolidate the analyzed content into a list of structured JSON objects for the blog frontend.
+
+            **Style Guidelines:**
+            - **Tone:** Enthusiastic, "Game Changer" energy. Use phrases like "flipped the table" or "new king."
+            - **Content:** Use Markdown inside the content string (## Headings, **Bold**, Lists).
+
+            **Required Output Structure (Array of Objects):**
+            Produce a Distonary array where each item follows this exact schema:
+            {
+                "id": "shorter kebab-case-slug-based-on-title",
+                "category": "Identify the appropriate content category, Always include "Breaking News" and pick one more relevant category from this list: ["Breaking News", "Cloud & Infrastructure", "Developer Central", "Tech Strategy", "Market & Economy", "Cybersecurity"]",
+                "title": "A Catchy, High-CTR Headline",
+                "description": "A punchy 2-3 sentence hook summarizing the content.",
+                "content": "The full 350+ word blog post in Markdown format. Must include 'Conclusion'."
+            }
+        JUST WANT THE OUTPUT FORMATTED DATA ONLY NOT YOUR THINKING AND ANY OTHER CONVO.
+        DO NOT WRITE RESPONSE IN ANY OTHER FORMAT RATHER THEN THE JSON FORMAT PROVIDED ABOVE.
     """

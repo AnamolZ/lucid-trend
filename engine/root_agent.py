@@ -1,3 +1,4 @@
+
 from google.adk.tools import AgentTool
 from config.config import RootAgentConfig
 from engine.agent_engine import AgentEngine
@@ -18,7 +19,7 @@ class RootAgentEngine:
         ]
         self.output_key= self.config.output_key
 
-    async def root_agent(self):
+    def root_agent(self):
         root_engine = AgentEngine(
             self.agent_name, 
             self.description, 
@@ -28,5 +29,4 @@ class RootAgentEngine:
         )
         root_engine.agent_creation()
         root_engine.agent_runner()
-        root_engine_response = await root_engine.agent_response("Fetch the most recent important tech news from the past 24 hours, perform a deep-dive investigation into the most recent tech news for a provided headlines")
-        return root_engine_response
+        return root_engine

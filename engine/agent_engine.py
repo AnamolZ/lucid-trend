@@ -1,8 +1,13 @@
 
+import asyncio
+import logging
 from google.adk.agents import Agent
 from google.adk.runners import InMemoryRunner
 from google.adk.models.google_llm import Gemini
 from google.genai import types
+
+logging.getLogger("google_genai.types").setLevel(logging.ERROR)
+logging.getLogger("google_genai").setLevel(logging.ERROR)
 
 class AgentEngine:
     def __init__(self, agent_name, description, instruction, tools, output_key):
@@ -41,13 +46,29 @@ class AgentEngine:
     async def agent_response(self, ask: str):
         if not self.runner:
             raise RuntimeError("Runner not initialized.")
-        agent_reply = await self.runner.run_debug(ask)
-        response = ""
 
-        if isinstance(agent_reply, list):
-            for event in agent_reply:
-                if event.content and event.content.parts:
+        while True:
+            try:
+                events = await self.runner.run_debug(ask)
+                response = ""
+
+                for event in events:
+                    if not event.content or not event.content.parts:
+                        continue
+
                     for part in event.content.parts:
-                        if part.text:
-                            response = part.text
-        return response
+                        if hasattr(part, "function_call") and part.function_call:
+                            response += f"[FUNCTION_CALL] {part.function_call.name}\n"
+                        elif hasattr(part, "tool_response") and part.tool_response:
+                            response += f"[TOOL_RESPONSE] OK\n"
+                        elif hasattr(part, "text") and part.text:
+                            response += part.text
+
+                if response:
+                    return response
+                
+                await asyncio.sleep(1)
+
+            except Exception:
+                await asyncio.sleep(2)
+                continue
