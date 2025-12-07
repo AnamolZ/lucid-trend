@@ -1,111 +1,169 @@
-# LucidTrend - Autonomous Tech News Agent System
+# **LucidTrend – Autonomous Tech News Agent System**
 
-LucidTrend is an advanced, fully automated autonomous agent system designed to scout, analyze, and publish high-impact technology news. It differentiates itself by operating without human intervention, leveraging a swarm of AI agents to perform the work of a dedicated editorial team—from research to publication.
+LucidTrend is a fully automated, autonomous agent ecosystem engineered to scout, analyze, synthesize, and publish high-impact technology news. It requires **zero human intervention**, operating as an AI-powered editorial team that runs end-to-end—from discovery to distribution.
 
-## Core Philosophy: "Zero-Touch" Operation
+---
 
-The system is built on the principle of **autonomous recurrence**. Once deployed, it exists as a self-sustaining entity that triggers itself, self-heals from minor API errors, and manages its own resource consumption. It turns raw information into polished, distributed content through a rigid, fault-tolerant pipeline.
+## **Core Philosophy: Zero-Touch Automation**
 
-## System Architecture
+LucidTrend is built on the idea of **autonomous recurrence**.
+Once deployed, it acts as a self-sustaining system that:
 
-The architecture is containerized and orchestrated via Docker Compose, splitting responsibilities across three specialized services:
+* Triggers itself on a recurring schedule
+* Handles failures and API inconsistencies
+* Repairs malformed AI output
+* Manages resources and workloads
+* Produces polished, publication-ready content
+
+It turns raw internet signals into structured, distributed technology news.
+
+---
+
+## **System Architecture**
+
+The system is containerized via Docker Compose, dividing responsibilities across three core services:
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph "Docker Swarm"
-        Scheduler[App Container<br/>(Scheduler & Orchestrator)]
-        Worker[Worker Container<br/>(Celery & Heavy Lifting)]
-        Broker[Redis Container<br/>(Message Broker)]
+        Scheduler[App Container - Scheduler & Orchestrator]
+        Worker[Worker Container - Celery Worker]
+        Broker[Redis Container - Task Queue Broker]
     end
 
-    User([End User]) --> |Subscribes| MongoDB[(MongoDB)]
+    User([Subscriber]) --> |Subscribes| MongoDB[(MongoDB)]
     
-    Scheduler --> |1. Triggers| AgentEngine[Agent Engine]
+    Scheduler --> |1. Triggers Cycle| AgentEngine[Agent Engine]
     Scheduler --> |4. Queues Tasks| Broker
-    
-    Broker --> |5. Distributes| Worker
-    
+    Broker --> |5. Distributes Jobs| Worker
+
     subgraph "Intelligent Processing"
         AgentEngine --> NewsAgent[News Coordinator]
-        AgentEngine --> DeepSearch[Deep Search]
+        AgentEngine --> DeepSearch[Deep Search Agent]
         AgentEngine --> RootAgent[Root Agent]
         
-        NewsAgent --> |Scouts| GeminiAPI[Google Gemini 2.5]
+        NewsAgent --> |Scouts| GeminiAPI[Gemini 2.5 Flash]
         DeepSearch --> |Investigates| GeminiAPI
         RootAgent --> |Synthesizes| GeminiAPI
     end
     
-    Worker --> |6. Gen Image| HF[HuggingFace / Unsplash]
-    Worker --> |7. Send Email| SMTP[SMTP Server]
+    Worker --> |6. Generate Image| HF[HuggingFace / Unsplash]
+    Worker --> |7. Send Newsletter| SMTP[SMTP Server]
     
-    Worker --> |8. Persist| MongoDB
-    SMTP --> |9. Deliver| User
+    Worker --> |8. Save Articles| MongoDB
+    SMTP --> |9. Deliver Emails| User
 ```
 
-## Deep Dive: How It Functions
+---
 
-The system operates on a strictly defined **Daily Cycle**, orchestrated by `main.py`. Here is the step-by-step breakdown of what happens at **05:00 AM** and **10:00 PM** every day:
+## **How LucidTrend Works (Daily Cycle)**
 
-### Phase 1: The Wake-Up Call (Scheduler)
-The `app` container runs a lightweight scheduler (`schedule` library). When the clock hits the target time:
-1.  **Environment Check**: It validates that all API keys (Gemini, Mongo, HuggingFace) are present.
-2.  **Cycle Start**: It initiates the asynchronous `run_daily_cycle()` function.
+LucidTrend operates twice every day at **05:00 AM** and **10:00 PM**, triggered by the scheduler inside `main.py`.
 
-### Phase 2: The Agent Swarm (News Discovery)
-This is the "Brain" of the operation. The `AgentEngine` spins up three distinct AI personas using Google's Gemini 2.5 Flash model:
+---
 
-1.  **News Coordinator Agent**:
-    *   *Role*: The Scout.
-    *   *Action*: Scans the past 24 hours of global tech events. It filters out noise (generic product launches, minor updates) and identifies "High Impact" stories.
-    *   *Output*: A list of potential headlines.
+### **Phase 1: Scheduler Boot (Wake-Up Call)**
 
-2.  **Deep Search Agent**:
-    *   *Role*: The Investigator.
-    *   *Action*: Takes the meaningful headlines found by the Coordinator and performs a "Deep Dive". It looks for context, implications, financial impact, and related historical data.
-    *   *Output*: Detailed context and facts for each story.
+When the clock hits the scheduled time:
 
-3.  **Root Agent (The Editor)**:
-    *   *Role*: The Synthesizer.
-    *   *Action*: Consumes the raw facts from the Deep Search Agent. It applies editorial guidelines (tone, style, formatting) to produce a cohesive, engaging narrative.
-    *   *Output*: A raw JSON structure containing the final articles.
+1. **Environment Validation**
+   Ensures Gemini, MongoDB, HuggingFace, and SMTP credentials are available.
 
-### Phase 3: Data Hygiene & Fault Tolerance
-AI output can be unpredictable. The system employs a robust cleaning layer (`gemini.py`) before trusting the data:
-*   **JSON Repair**: If the AI returns malformed JSON (e.g., missing quotes), the system catches the error and feeds it back into a "Repair Agent" to fix the syntax.
-*   **Duplicate Detection**: Before saving, it checks MongoDB to ensure the same story hasn't been covered recently.
+2. **Cycle Trigger**
+   Launches the asynchronous `run_daily_cycle()` workflow.
 
-### Phase 4: Asynchronous Parallel Processing (Celery)
-To ensure the scheduler remains responsive, heavy I/O tasks are offloaded to the **Celery Worker**:
+---
 
-1.  **Image Generation Task**:
-    *   For each article, the worker asks Gemini to describe a visual concept (e.g., "Cybersecurity Shield crumbling").
-    *   It sends a prompt to **Hugging Face (FLUX.1-dev)** to generate a photorealistic image.
-    *   *Fallback*: If image generation fails (API limits), it searches **Unsplash** for a relevant stock photo.
-    *   The final image URL is injected into the article and saved to MongoDB.
+### **Phase 2: News Intelligence (Agent Swarm)**
 
-2.  **Email Broadcast Task**:
-    *   Once all articles are processed, a final task is queued.
-    *   It fetches all verified subscribers from MongoDB.
-    *   It generates a dynamic, engaging email subject line based on the specific news content of that batch.
-    *   It compiles the HTML newsletter and broadcasts it via SMTP.
+The `AgentEngine` activates a trio of specialized AI personas powered by **Gemini 2.5 Flash**:
 
-## Directory Structure & Logic
+#### **1. News Coordinator (Scout)**
 
-### `app/` (Root)
-*   **`main.py`**: The commander. Initializes the cycle, handles errors, and ensures the loop runs forever.
-*   **`docker-compose.yml`**: The infrastructure blueprint. Defines how the Scheduler, Worker, and Redis talk to each other.
+* Identifies the most significant tech events in the last 24 hours
+* Filters noise and low-impact items
+* Produces a list of candidate headlines
 
-### `service/`
-*   **`tasks/tasks.py`**: The muscle. Contains the code that runs on the worker nodes (Image Gen, Email Sending). Separating this ensures the main app doesn't freeze while waiting for an image to generate.
-*   **`mongodb/`**: Database interaction layer. All read/write operations to the persistent storage happen here.
-*   **`data_cleaning/`**: The sanitization layer. Ensures that whatever the AI outputs is converted into valid, usable code structures.
+#### **2. Deep Search Agent (Investigator)**
 
-## Why this Architecture?
+* Performs deeper research on each headline
+* Collects historical context, market relevance, and technical implications
+* Outputs structured facts
 
-*   **Docker**: Ensures the environment is identical on development and production machines. No "it works on my machine" issues.
-*   **uv**: Used instead of `pip` for lightning-fast dependency resolution and installation.
-*   **Celery & Redis**: Decouples the "thinking" (AI generation) from the "doing" (Image gen/Email). If the image API hangs for 30 seconds, the main scheduler proceeds to the next step immediately.
-*   **Gemini 2.5 Flash**: Chosen for its balance of speed, cost, and high context window, crucial for processing large amounts of news data.
+#### **3. Root Agent (Editor-in-Chief)**
 
-<!-- docker-compose up --build -d -->
-<!-- docker-compose logs -f -->
+* Turns facts into editorially polished articles
+* Ensures consistent tone and formatting
+* Outputs structured JSON representing the final articles
+
+---
+
+### **Phase 3: Data Cleaning & Fault Recovery**
+
+All AI output passes through a sanitization layer:
+
+* **JSON Repair**
+  Automatically fixes malformed JSON via a secondary "Repair Agent".
+
+* **Duplicate Detection**
+  Prevents re-publishing similar news within a recent window.
+
+* **Validation**
+  Ensures essential fields are present before persistence.
+
+---
+
+### **Phase 4: Parallel Heavy Lifting (Celery Worker)**
+
+The scheduler hands off resource-intensive tasks to Celery:
+
+#### **1. Image Generation**
+
+* Describes a visual concept using Gemini
+* Generates photorealistic images via **HuggingFace FLUX.1-dev**
+* **Fallback**: Fetches a relevant stock image from Unsplash
+* Stores the final image URL in MongoDB
+
+#### **2. Email Newsletter Broadcast**
+
+* Fetches verified subscribers from MongoDB
+* Auto-generates a custom subject line based on the day’s news
+* Builds and sends a responsive HTML newsletter via SMTP
+
+---
+
+## **Directory Overview**
+
+### **`app/`**
+
+* **`main.py`** – Controls the daily cycle, error handling, and scheduling
+* **`docker-compose.yml`** – Infrastructure definition (Scheduler, Worker, Redis)
+
+### **`service/`**
+
+* **`tasks/tasks.py`** – Celery tasks: image generation & email dispatch
+* **`mongodb/`** – Database helpers for reading/writing articles & subscribers
+* **`data_cleaning/`** – JSON repair and AI-output sanitization
+
+---
+
+## **Why This Stack?**
+
+* **Docker** – Guarantees identical environments across development & production
+* **uv** – Faster dependency resolution and deterministic builds
+* **Celery + Redis** – Enables scalable, asynchronous job processing
+* **Gemini 2.5 Flash** – High-speed reasoning with cost-efficient API usage
+
+---
+
+## **Commands**
+
+```bash
+# Build & start entire system
+docker-compose up --build -d
+```
+
+```bash
+# Stream logs
+docker-compose logs -f
+```
