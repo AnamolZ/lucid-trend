@@ -1,0 +1,22 @@
+
+# Git
+.git
+.gitignore
+
+# Python / UV
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.python-version
+# We usually copy uv.lock but we might want to exclude it if we want to regenerate?
+# No, for reproducible builds we strictly WANT uv.lock.
+# So DO NOT ignore uv.lock.
+
+# Env
+.env
+
+# OS
+.DS_Store
+Thumbs.db

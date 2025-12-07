@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:alpine
+    restart: always
+
+  app:
+    build: .
+    restart: always
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TZ=Asia/Kathmandu
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/.venv
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    command: celery -A service.tasks.tasks worker --loglevel=info --concurrency=4
+    restart: always
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TZ=Asia/Kathmandu
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/.venv
+    depends_on:
+      - redis
+      - app

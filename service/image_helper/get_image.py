@@ -31,9 +31,6 @@ def huggingface_image(HUGGING_FACE_TOKEN, prompt):
         model="black-forest-labs/FLUX.1-dev"
     )
 
-    # image.save("output.png")
-    # print(f"Image saved")
-
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     buf.seek(0)

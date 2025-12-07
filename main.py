@@ -26,6 +26,14 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
 
+try:
+    os.environ['TZ'] = 'Asia/Kathmandu'
+    if hasattr(time, 'tzset'):
+        time.tzset()
+    logging.info("Timezone set to Asia/Kathmandu")
+except Exception as e:
+    logging.warning(f"Failed to set timezone: {e}")
+
 load_dotenv()
 
 REQUIRED_ENV = [
@@ -81,12 +89,12 @@ async def run_job():
         )
         if not reply:
             logging.warning("Root agent returned no data")
-            return
+            return False
 
         extracted = await safe_execute("Extraction", extract, reply, model)
         if not extracted:
             logging.warning("Extraction returned no data")
-            return
+            return False
 
         with open("service/blog/extracted_data.json", "w", encoding="utf-8") as f:
             json.dump(extracted, f, ensure_ascii=False, indent=2)
@@ -96,12 +104,12 @@ async def run_job():
         posts = await safe_execute("FetchPosts", fetch_posts, MONGO_URI, DATABASE_NAME, COLLECTION_NAME)
         if not posts:
             logging.info("No posts found to process")
-            return
+            return True
 
         duplicates = await safe_execute("DuplicateDetection", detect_duplicates, posts, model)
         if duplicates is None:
             logging.warning("Duplicate detection failed")
-            return
+            return False
 
         await safe_execute("RemoveDuplicates", remove_duplicates, duplicates, MONGO_URI, DATABASE_NAME, COLLECTION_NAME)
 
@@ -110,15 +118,38 @@ async def run_job():
             json.dump(cleaned, f, ensure_ascii=False, indent=4)
 
         await safe_execute("NotifySubscribers", notify_subscribers, model, MONGO_URI, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)
+        
+        for temp_file in ["service/blog/extracted_data.json", "service/blog/clean_posts.json"]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+                logging.info(f"Removed temporary file: {temp_file}")
 
         logging.info("Job finished successfully")
+        return True
 
     except Exception as e:
         logging.error(f"Job failed unexpectedly: {str(e)}")
+        return False
+
+async def run_daily_cycle():
+    logging.info("Starting daily cycle...")
+    while True:
+        success = await run_job()
+        if success:
+            logging.info("Daily job executed successfully.")
+            break
+        else:
+            logging.warning("Daily job failed or returned no data. Retrying in 10 minutes...")
+            await asyncio.sleep(600)
 
 def start_scheduler():
-    logging.info("Scheduler started")
-    schedule.every(1).minutes.do(lambda: asyncio.run(run_job()))
+    # logging.info("Scheduler started. Job scheduled for 11:30 and 21:00 daily.")
+    # schedule.every().day.at("11:30").do(lambda: asyncio.run(run_daily_cycle()))
+    # schedule.every().day.at("21:00").do(lambda: asyncio.run(run_daily_cycle()))
+
+    logging.info("Scheduler started. Job scheduled every 1 minute.")
+    schedule.every(1).minutes.do(lambda: asyncio.run(run_daily_cycle()))
+    
     while True:
         schedule.run_pending()
         time.sleep(1)
