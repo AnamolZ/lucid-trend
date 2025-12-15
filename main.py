@@ -143,12 +143,12 @@ async def run_daily_cycle():
             await asyncio.sleep(600)
 
 def start_scheduler():
-    # logging.info("Scheduler started. Job scheduled for 11:30 and 21:00 daily.")
-    # schedule.every().day.at("11:30").do(lambda: asyncio.run(run_daily_cycle()))
+    logging.info("Scheduler started. Job scheduled for 5:00 daily.")
+    schedule.every().day.at("4:57").do(lambda: asyncio.run(run_daily_cycle()))
     # schedule.every().day.at("21:00").do(lambda: asyncio.run(run_daily_cycle()))
 
-    logging.info("Scheduler started. Job scheduled every 1 minute.")
-    schedule.every(1).minutes.do(lambda: asyncio.run(run_daily_cycle()))
+    # logging.info("Scheduler started. Job scheduled every 1 minute.")
+    # schedule.every(1).minutes.do(lambda: asyncio.run(run_daily_cycle()))
     
     while True:
         schedule.run_pending()
