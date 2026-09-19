@@ -1,138 +1,118 @@
-
 import json
+import time
+import re
+import logging
+from difflib import SequenceMatcher
 
-def extract(raw, model):
+def fast_extract(raw, model=None):
+    """
+    Zero-token fast local JSON extractor.
+    Parses structured articles directly without consuming Gemini API tokens.
+    Falls back to LLM extraction only if raw text is severely malformed.
+    """
+    if not raw or not isinstance(raw, str):
+        return []
+
+    text = raw.strip()
+
+    # 1. Direct JSON parse
+    try:
+        data = json.loads(text)
+        if isinstance(data, list) and len(data) > 0:
+            return data
+    except Exception:
+        pass
+
+    # 2. Extract from markdown code fences ```json ... ```
+    fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            data = json.loads(fence_match.group(1))
+            if isinstance(data, list) and len(data) > 0:
+                return data
+        except Exception:
+            pass
+
+    # 3. Extract bracketed array [...]
+    array_match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
+    if array_match:
+        try:
+            data = json.loads(array_match.group(0))
+            if isinstance(data, list) and len(data) > 0:
+                return data
+        except Exception:
+            pass
+
+    # 4. Fallback to Gemini extraction only if local extraction fails
+    if model:
+        logging.info("[Extraction] Local parser encountered non-JSON output; invoking fallback LLM extractor.")
+        return extract_with_llm(raw, model)
+
+    return []
+
+def extract_with_llm(raw, model):
+    """Fallback LLM extractor for malformed agent responses."""
     prompt = f"""
-        You are an information extraction engine.
-        
-        Extract news/article data from the raw text.
-        Output ONLY valid JSON:
-        
+        Extract news/article data from the raw text into a valid JSON array:
         [
           {{
             "id": "string",
             "category": ["string","string"],
             "title": "string",
             "description": "string",
-            "content": "string"
+            "content": "string",
+            "image_keyword": "string",
+            "image_prompt": "string"
           }}
         ]
-        
-        Never include text outside JSON.
-        
+        Never include markdown code blocks or text outside JSON.
         Raw Input:
         {raw}
     """
+    try:
+        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        return json.loads(response.text)
+    except Exception as e:
+        logging.error(f"[Extraction] Fallback LLM extraction failed: {e}")
+        return []
 
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "response_mime_type": "application/json"
-        }
-    )
-
-    return json.loads(response.text)
-
-def detect_duplicates(posts, model):
-    input_text = json.dumps(posts, ensure_ascii=False)
-    
-    prompt = f"""
-        You are a content analysis engine.
-        
-        Given a list of news posts with 'id', 'title', and 'description', identify posts that are duplicates (even if the title or description differs slightly). 
-        Output ONLY a JSON array of duplicate IDs.
-        
-        Input:
-        {input_text}
+def local_detect_duplicates(posts, model=None, similarity_threshold=0.75):
     """
-    
-    response = model.generate_content(
-        prompt,
-        generation_config={"response_mime_type": "application/json"}
-    )
-    
-    return json.loads(response.text)
-
-def email_title(model):
-    prompt = """
-        You are a professional copywriter creating daily email titles for a tech newsletter.
-        Generate **one highly engaging, concise, and professional email subject line** summarizing the latest technology news from the past 24 hours.
-        Keep it general and trend-focused; do NOT mention specific categories, products, or technologies.
-        Make it click-worthy and optionally use a simple emoji like 🔥, 🚀, or 💡.
-        Example style: 'Tech's Rapid Evolution: Read today's latest news.'
-        Output only the title as plain text, no quotes, JSON, or extra text.
+    Zero-token local duplicate detection.
+    Compares article slugs and computes fuzzy title similarity (>75%).
+    100% immune to API rate limits and quotas.
     """
+    if not posts or len(posts) < 2:
+        return []
 
-    response = model.generate_content(
-        prompt,
-        generation_config={"response_mime_type": "text/plain"}
-    )
+    duplicates = set()
+    seen = []
 
-    return response.text.strip()
+    for post in posts:
+        post_id = post.get("id")
+        title = post.get("title", "").strip().lower()
 
-def build_content_with_gemini(news_json, model):
-    prompt = """
-        You are generating professional newsletter content for a daily technology briefing.
-        Extract only the most important and relevant points from the provided JSON.
-        Produce clean HTML blocks with:
-        <h2>Headline</h2>
-        <p>3–5 sentence professional summary focusing on what happened, why it matters, and its industry impact.</p>
-        Tone must be clear, objective, and editorial. No emojis or hype.
-        Return only HTML blocks.
-    """
+        if not post_id or not title:
+            continue
 
-    response = model.generate_content(
-        prompt + "\n\nNews JSON:\n" + json.dumps(news_json)
-    )
-    return response.text.strip()
+        is_dup = False
+        for seen_id, seen_title in seen:
+            if post_id == seen_id:
+                is_dup = True
+                break
 
-def image_suggestion(model, content):
-    prompt = f"""
-        Based strictly on the article content, extract the most accurate, 
-        visually-representative concept and express it as exactly two words.
+            ratio = SequenceMatcher(None, title, seen_title).ratio()
+            if ratio >= similarity_threshold:
+                is_dup = True
+                logging.info(f"[Deduplication] Duplicate detected locally: '{post.get('title')}' is {ratio:.0%} similar to existing post.")
+                break
 
-        Requirements:
-        - Output must be exactly 2 words (e.g., "AI Agent", "Cybersecurity Breach", "Space Launch").
-        - Words must clearly represent the main visual idea in the article.
-        - No generic or vague nouns (e.g., "Agent", "System", "Thing").
-        - No more than 2 words. No punctuation. No numbers.
-        - No sentences, no lists, no explanations.
+        if is_dup:
+            duplicates.add(post_id)
+        else:
+            seen.append((post_id, title))
 
-        Article Content:
-        "{content}"
+    return list(duplicates)
 
-        Respond with exactly two words only.
-    """
-    response = model.generate_content(
-        prompt,
-        generation_config={"response_mime_type": "text/plain"}
-    )
-
-    return response.text.strip()
-
-def image_generation_prompt(model, content):
-    prompt = f"""
-    Based strictly on the article content, generate a detailed, professional prompt suitable 
-    for AI image generation. The prompt should describe a visually-rich, high-quality image 
-    that matches the key themes, concepts, and mood of the article. Include:
-
-    - Key subjects, objects, or characters
-    - Relevant environment, background, or setting
-    - Lighting, colors, and atmosphere
-    - Style or artistic tone (e.g., realistic, futuristic, minimalistic, cinematic)
-    
-    Requirements:
-    - Output must be a single descriptive paragraph suitable as a prompt for image generation.
-    - No generic or vague terms. Be specific and visually descriptive.
-    - Do not include instructions for the AI, just the descriptive prompt.
-    
-    Article Content:
-    "{content}"
-    
-    Respond only with the image generation prompt.
-    """
-    response = model.generate_content(
-        prompt,
-        generation_config={"response_mime_type": "text/plain"}
-    )
-    return response.text.strip()
+def detect_duplicates(posts, model=None):
+    return local_detect_duplicates(posts, model)

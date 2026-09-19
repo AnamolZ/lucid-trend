@@ -1,4 +1,3 @@
-
 from config.config import NewsEngineConfig
 from engine.agent_engine import AgentEngine
 
@@ -9,15 +8,15 @@ class NewsEngine:
         self.description = self.config.description
         self.instruction = self.config.instruction
         self.tools = list(self.config.tools)
-        self.output_key= self.config.output_key
+        self.output_key = self.config.output_key
 
-    def news_agent(self):
-        news_engine = AgentEngine(
+    def news_agent(self, model_name=None):
+        engine = AgentEngine(
             self.agent_name, 
             self.description, 
             self.instruction, 
             self.tools, 
             self.output_key
         )
-        news_engine.agent_creation()
-        return news_engine.agent
+        engine.agent_creation(model_name=model_name)
+        return engine.agent

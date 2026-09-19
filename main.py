@@ -1,158 +1,158 @@
-
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 import os
-import asyncio
-import json
-import schedule
+import sys
 import time
+import asyncio
 import logging
+import schedule
 from dotenv import load_dotenv
-from google.generativeai import GenerativeModel, configure
 
-from engine.news_engine import NewsEngine
-from engine.dsearch_engine import DeepSearchEngine
 from engine.root_agent import RootAgentEngine
-
-from service.data_cleaning.gemini import extract, detect_duplicates
+from service.data_cleaning.gemini import fast_extract, detect_duplicates
+from service.mongodb.client import MongoDBService
 from service.mongodb.insert_posts import insert_posts
-from service.mongodb.fetch_posts import fetch_posts
-from service.mongodb.remove_posts import remove_duplicates
 from service.emails.notify_subscriber import notify_subscribers
+from config.logging_config import setup_logging
+from config.model_pool import get_active_model, get_active_key, coordinator
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
+setup_logging()
 
+# Configure timezone
 try:
     os.environ['TZ'] = 'Asia/Kathmandu'
     if hasattr(time, 'tzset'):
         time.tzset()
-    logging.info("Timezone set to Asia/Kathmandu")
+    logging.info("[System] Timezone initialized to Asia/Kathmandu.")
 except Exception as e:
-    logging.warning(f"Failed to set timezone: {e}")
+    logging.warning(f"[System] Failed to configure timezone: {e}")
 
 load_dotenv()
 
 REQUIRED_ENV = [
     "MONGO_URI",
-    "DATABASE_NAME",
-    "COLLECTION_NAME",
-    "GOOGLE_API_KEY",
     "SMTP_SERVER",
     "SMTP_USER",
     "SMTP_PASSWORD"
 ]
 
-def validate_env():
+def validate_environment():
     missing = [k for k in REQUIRED_ENV if not os.getenv(k)]
+    has_api_key = os.getenv("GOOGLE_API_KEYS") or os.getenv("GOOGLE_API_KEY")
+    if not has_api_key:
+        missing.append("GOOGLE_API_KEY")
     if missing:
-        logging.error(f"Missing required environment variables: {', '.join(missing)}")
+        logging.error(f"[Config Error] Missing required environment variables: {', '.join(missing)}")
         raise SystemExit(1)
 
-validate_env()
+validate_environment()
 
-MONGO_URI = os.getenv("MONGO_URI")
-DATABASE_NAME = os.getenv("DATABASE_NAME")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-SMTP_SERVER = os.getenv("SMTP_SERVER")
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-
-async def safe_execute(name, func, *args, **kwargs):
+async def safe_execute(step_name: str, func, *args, **kwargs):
+    """Executes a pipeline step with timing, clean logging, and structured error handling."""
+    start_time = time.time()
     try:
-        logging.info(f"{name} started")
+        logging.info(f"[{step_name}] Step initiated.")
         result = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
-        logging.info(f"{name} completed")
+        elapsed = time.time() - start_time
+        logging.info(f"[{step_name}] Step completed successfully in {elapsed:.2f}s.")
         return result
     except Exception as e:
-        logging.error(f"{name} failed: {str(e)}")
+        elapsed = time.time() - start_time
+        logging.error(f"[{step_name}] Step failed after {elapsed:.2f}s: {str(e)}")
         return None
 
-async def run_job():
-    logging.info("Job started")
+async def run_pipeline():
+    """
+    Executes the autonomous tech intelligence pipeline:
+    1. Scouts 24-hr breaking tech news & conducts deep investigative research.
+    2. Synthesizes publication-grade markdown articles.
+    3. Generates high-resolution visuals via Celery (FLUX.1-schnell / Unsplash).
+    4. Inserts posts into MongoDB and performs zero-token deduplication.
+    5. Dispatches responsive email newsletters to verified subscribers.
+    """
+    active_key = get_active_key()
+    masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "***"
+    
+    logging.info("=" * 65)
+    logging.info(f"[Pipeline] Cycle started | Model: '{get_active_model()}' | Active Key #{coordinator.key_index + 1} ({masked_key})")
+    logging.info("=" * 65)
+
     try:
-        configure(api_key=GOOGLE_API_KEY)
-        model = GenerativeModel("gemini-2.5-flash")
-
-        await safe_execute("NewsEngine", lambda: NewsEngine().news_agent())
-        await safe_execute("DeepSearchEngine", lambda: DeepSearchEngine().dsearch_agent())
-
+        # Step 1: Autonomous research & article generation
         root = RootAgentEngine()
+        research_prompt = (
+            "Identify the top 2 breakthrough technology developments from the past 24 hours. "
+            "Conduct deep technical research on architecture, benchmarks, and developer impact, "
+            "and produce publication-ready articles matching the specified JSON schema."
+        )
+        
         reply = await safe_execute(
-            "RootAgentEngine",
+            "AgentResearch",
             root.root_agent().agent_response,
-            "Fetch the most recent important tech news from the past 24 hours, perform a deep-dive investigation into the most recent tech news for a provided headlines"
+            research_prompt
         )
         if not reply:
-            logging.warning("Root agent returned no data")
+            logging.warning("[Pipeline] Agent returned no data. Pipeline aborted for this cycle.")
             return False
 
-        extracted = await safe_execute("Extraction", extract, reply, model)
-        if not extracted:
-            logging.warning("Extraction returned no data")
+        # Step 2: Zero-token fast local parsing
+        articles = await safe_execute("DataExtraction", fast_extract, reply)
+        if not articles or not isinstance(articles, list):
+            logging.warning("[Pipeline] Extraction found no valid articles.")
             return False
+        logging.info(f"[DataExtraction] Extracted {len(articles)} curated articles with zero token overhead.")
 
-        with open("service/blog/extracted_data.json", "w", encoding="utf-8") as f:
-            json.dump(extracted, f, ensure_ascii=False, indent=2)
+        # Step 3: Celery visual generation and MongoDB insertion
+        inserted_docs = await safe_execute("InsertPosts", insert_posts, articles)
+        if not inserted_docs:
+            logging.warning("[Pipeline] No articles inserted into database.")
 
-        await safe_execute("InsertPosts", insert_posts, "service/blog/extracted_data.json", model)
+        # Step 4: Zero-token fuzzy duplicate detection and cleanup
+        mongo_service = MongoDBService()
+        existing_posts = await safe_execute("FetchPosts", mongo_service.fetch_all_posts)
+        if existing_posts:
+            duplicates = await safe_execute("DuplicateDetection", detect_duplicates, existing_posts)
+            if duplicates:
+                await safe_execute("RemoveDuplicates", mongo_service.remove_duplicate_posts, duplicates)
+            else:
+                logging.info("[DuplicateDetection] Database clean: 0 duplicate articles detected.")
 
-        posts = await safe_execute("FetchPosts", fetch_posts, MONGO_URI, DATABASE_NAME, COLLECTION_NAME)
-        if not posts:
-            logging.info("No posts found to process")
-            return True
+        # Step 5: Zero-token newsletter dispatch via Celery
+        await safe_execute("NotifySubscribers", notify_subscribers, articles)
 
-        duplicates = await safe_execute("DuplicateDetection", detect_duplicates, posts, model)
-        if duplicates is None:
-            logging.warning("Duplicate detection failed")
-            return False
-
-        await safe_execute("RemoveDuplicates", remove_duplicates, duplicates, MONGO_URI, DATABASE_NAME, COLLECTION_NAME)
-
-        cleaned = [p for p in posts if p["id"] not in duplicates]
-        with open("service/blog/clean_posts.json", "w", encoding="utf-8") as f:
-            json.dump(cleaned, f, ensure_ascii=False, indent=4)
-
-        await safe_execute("NotifySubscribers", notify_subscribers, model, MONGO_URI, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)
-        
-        for temp_file in ["service/blog/extracted_data.json", "service/blog/clean_posts.json"]:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-                logging.info(f"Removed temporary file: {temp_file}")
-
-        logging.info("Job finished successfully")
+        logging.info("=" * 65)
+        logging.info("[Pipeline] Cycle completed successfully. All tasks finished.")
+        logging.info("=" * 65)
         return True
 
     except Exception as e:
-        logging.error(f"Job failed unexpectedly: {str(e)}")
+        logging.error(f"[Pipeline] Pipeline terminated with error: {str(e)}")
         return False
 
 async def run_daily_cycle():
-    logging.info("Starting daily cycle...")
+    """Executes run_pipeline with retry logic in case of upstream network errors."""
     while True:
-        success = await run_job()
+        success = await run_pipeline()
         if success:
-            logging.info("Daily job executed successfully.")
+            logging.info("[Scheduler] Pipeline run concluded successfully.")
             break
         else:
-            logging.warning("Daily job failed or returned no data. Retrying in 10 minutes...")
-            await asyncio.sleep(600)
+            logging.warning("[Scheduler] Pipeline cycle did not produce output. Retrying in 5 minutes...")
+            await asyncio.sleep(300)
 
 def start_scheduler():
-    logging.info("Scheduler started. Job scheduled for 5:00 daily.")
-    schedule.every().day.at("04:57").do(lambda: asyncio.run(run_daily_cycle()))
-    # schedule.every().day.at("21:00").do(lambda: asyncio.run(run_daily_cycle()))
-
-    # logging.info("Scheduler started. Job scheduled every 1 minute.")
-    # schedule.every(1).minutes.do(lambda: asyncio.run(run_daily_cycle()))
+    logging.info("[Scheduler] Autonomous daemon active. Scheduled daily at 05:00 and 17:00 Asia/Kathmandu.")
+    schedule.every().day.at("05:00").do(lambda: asyncio.run(run_daily_cycle()))
+    schedule.every().day.at("17:00").do(lambda: asyncio.run(run_daily_cycle()))
     
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 if __name__ == "__main__":
-    start_scheduler()
+    if "--now" in sys.argv or "--run-now" in sys.argv:
+        logging.info("[CLI] Executing immediate on-demand run (--now flag provided)...")
+        asyncio.run(run_daily_cycle())
+    else:
+        start_scheduler()
