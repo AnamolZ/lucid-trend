@@ -1,13 +1,4 @@
-# ⚡ LucidTrend — Autonomous Multi-Agent Tech Journalism & Newsletter Engine
-
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Celery](https://img.shields.io/badge/Celery-Distributed%20Queue-37814A?style=for-the-badge&logo=celery&logoColor=white)](https://docs.celeryq.dev/)
-[![Redis](https://img.shields.io/badge/Redis-Message%20Broker-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Document%20Store-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Google Gemini](https://img.shields.io/badge/Gemini%203.7%20Flash-Agentic%20AI-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
-[![Hugging Face](https://img.shields.io/badge/FLUX.1--schnell-AI%20Visuals-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/black-forest-labs/FLUX.1-schnell)
-[![Zero Cost](https://img.shields.io/badge/Cost-$0%20Perpetual%20Free-00C853?style=for-the-badge&logo=cashapp&logoColor=white)](https://ai.google.dev/)
+## LucidTrend — Autonomous Multi-Agent Tech Journalism & Newsletter Engine
 
 **LucidTrend** is a production-grade, zero-touch autonomous AI newsroom and digital publishing engine. Operating **100% perpetually free ($0 cost)** with zero human intervention, it functions as an automated digital editorial team: discovering breaking 24-hour technology news, conducting deep architectural research, writing comprehensive articles, generating custom AI visuals, detecting duplicates with zero token overhead, persisting content to MongoDB, and delivering modern responsive HTML email briefings to verified subscribers.
 
@@ -33,22 +24,22 @@
 
 ---
 
-## 🌐 Core Philosophy: Zero-Touch Automation
+## Core Philosophy: Zero-Touch Automation
 
 LucidTrend is built on the foundation of **autonomous recurrence and complete self-healing**.
 Once deployed, it acts as a self-sustaining system that:
 
-* ⏰ **Triggers autonomously** on a dual schedule (05:00 and 17:00 Asia/Kathmandu) or instantly on-demand via `--now`.
-* 🛡️ **Handles API limits and downtime** via multi-key rotation and multi-model waterfalls with zero crashes.
-* ⚡ **Eliminates token waste** using single-pass prompt synthesis and fast zero-token local post-processing.
-* 🧹 **Runs clean in-memory** with zero temporary disk files and automatic fuzzy deduplication.
-* 📰 **Produces polished, publication-ready journalism** equipped with deep architectural insights, custom visuals, and subscriber newsletters.
+* **Triggers autonomously** on a dual schedule (05:00 and 17:00 Asia/Kathmandu) or instantly on-demand via `--now`.
+* **Handles API limits and downtime** via multi-key rotation and multi-model waterfalls with zero crashes.
+* **Eliminates token waste** using single-pass prompt synthesis and fast zero-token local post-processing.
+* **Runs clean in-memory** with zero temporary disk files and automatic fuzzy deduplication.
+* **Produces polished, publication-ready journalism** equipped with deep architectural insights, custom visuals, and subscriber newsletters.
 
 It turns raw internet signals into structured, distributed technology news without any human oversight.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 The system is containerized via **Docker Compose**, dividing responsibilities across three core services:
 
@@ -85,7 +76,7 @@ flowchart TD
 
 ---
 
-## 🔄 How LucidTrend Works (Daily Cycle)
+## How LucidTrend Works (Daily Cycle)
 
 LucidTrend operates twice every day at **05:00 AM** and **05:00 PM (17:00)** Asia/Kathmandu time, triggered automatically by the scheduler inside `main.py` (or instantly triggered via the `--now` CLI flag).
 
@@ -175,7 +166,7 @@ Once fresh articles are persisted and verified:
 
 ---
 
-## 🛡️ Multi-Key & Multi-Model Cascading Resilience
+## Multi-Key & Multi-Model Cascading Resilience
 
 LucidTrend implements an intelligent, zero-cost coordinator (`config/model_pool.py`) designed to guarantee **uninterrupted 24/7 execution on free tiers**:
 
@@ -211,7 +202,7 @@ graph TD
 
 ---
 
-## 📁 Directory Overview
+## Directory Overview
 
 ```text
 lucid-trend/
@@ -270,7 +261,7 @@ lucid-trend/
 
 ---
 
-## ⚙️ Environment Variables
+## Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -300,7 +291,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 ---
 
-## 🚀 Commands & Execution
+## Commands & Execution
 
 ### **1. Run On-Demand (Immediate Execution)**
 To trigger an immediate single pipeline cycle (scout &rarr; research &rarr; write &rarr; image &rarr; DB &rarr; email):
@@ -338,7 +329,7 @@ docker-compose down
 
 ---
 
-## 💡 Why This Stack?
+## Why This Stack?
 
 * **Docker Compose** &ndash; Isolates the Scheduler, Celery Workers, and Redis broker with zero host contamination.
 * **Astral uv** &ndash; Extremely fast dependency resolution and deterministic Python virtual environments.
