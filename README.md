@@ -1,5 +1,9 @@
 ## LucidTrend — Autonomous Multi-Agent Tech Journalism & Newsletter Engine
 
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-err0rz%2Flucid--trend-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/err0rz/lucid-trend)
+[![Docker Pulls](https://img.shields.io/docker/pulls/err0rz/lucid-trend?style=for-the-badge&logo=docker&logoColor=white&color=2496ED)](https://hub.docker.com/r/err0rz/lucid-trend)
+[![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+
 **LucidTrend** is a production-grade, zero-touch autonomous AI newsroom and digital publishing engine. Operating **100% perpetually free ($0 cost)** with zero human intervention, it functions as an automated digital editorial team: discovering breaking 24-hour technology news, conducting deep architectural research, writing comprehensive articles, generating custom AI visuals, detecting duplicates with zero token overhead, persisting content to MongoDB, and delivering modern responsive HTML email briefings to verified subscribers.
 
 ---
@@ -315,7 +319,23 @@ Runs autonomously twice daily at **05:00** and **17:00** (Asia/Kathmandu):
 uv run .\main.py
 ```
 
-### **4. Run via Docker Compose (Production)**
+### **4. Run via Pre-Built Docker Image (Docker Hub)**
+Pull and run the clean production image directly from [Docker Hub (`err0rz/lucid-trend`)](https://hub.docker.com/r/err0rz/lucid-trend) without local Python or environment build steps:
+
+```bash
+# Pull the latest clean Docker Hub image
+docker pull err0rz/lucid-trend:latest
+
+# Trigger an immediate on-demand run
+docker run --rm --env-file .env err0rz/lucid-trend:latest python main.py --now
+
+# Run the persistent scheduler daemon in the background
+docker run -d --name lucid-trend-app --env-file .env err0rz/lucid-trend:latest
+```
+
+### **5. Run via Docker Compose (Production Stack)**
+Runs the isolated Scheduler, Celery Workers, and Redis task broker concurrently:
+
 ```bash
 # Build & start entire system in background
 docker-compose up --build -d
@@ -326,6 +346,8 @@ docker-compose logs -f
 # Gracefully stop containers
 docker-compose down
 ```
+
+> **Note:** To run Docker Compose with the pre-built Docker Hub image directly, set `image: err0rz/lucid-trend:latest` in `docker-compose.yml` instead of `build: .`.
 
 ---
 

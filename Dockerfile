@@ -29,5 +29,4 @@ COPY . /app/
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Run the application
-# Run the application
 CMD ["python", "main.py"]
