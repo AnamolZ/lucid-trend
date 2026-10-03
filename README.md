@@ -1,9 +1,5 @@
 ## LucidTrend
 
-[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-err0rz%2Flucid--trend-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/err0rz/lucid-trend)
-[![Docker Pulls](https://img.shields.io/docker/pulls/err0rz/lucid-trend?style=for-the-badge&logo=docker&logoColor=white&color=2496ED)](https://hub.docker.com/r/err0rz/lucid-trend)
-[![Python Version](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-
 LucidTrend is an autonomous artificial intelligence platform designed to scout, research, synthesize, and publish high-impact technology journalism without human intervention. Operating continuously on an automated schedule, the system monitors developer ecosystems across the globe, analyzes primary engineering announcements, and produces comprehensive technical intelligence reports.
 
 The platform combines multi-model language reasoning, deterministic local data parsing, resilient database persistence, asynchronous visual synthesis using state-of-the-art diffusion models, and high-deliverability editorial email distribution into a single cohesive architecture.
@@ -52,10 +48,6 @@ python main.py
 
 # Or via Docker Compose
 docker-compose up -d --build
-
-# Or pull directly from Docker Hub
-docker pull err0rz/lucid-trend:latest
-docker run -d --name lucid-trend-app -p 8000:8000 --env-file .env err0rz/lucid-trend:latest
 ```
 
 ### 2. Connect via the Interactive CLI
