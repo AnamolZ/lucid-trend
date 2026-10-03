@@ -40,14 +40,8 @@ For in-depth explanations, configuration guides, and architectural diagrams, ref
 
 ---
 
-## 👤 Author & Credits
-
-* **Developer:** [Anamol Dhakal](https://www.anamoldhakal.com.np/)
-* **Role:** Backend System & Autonomous AI Developer
-* **Project:** LucidTrend Autonomous Newsroom Engine
-
----
-
 <div align="center">
-  <sub>Built with Python, Google ADK, Gemini 3.7 Flash, Celery, Redis, MongoDB, and FLUX.1</sub>
+  <sub>Designed and developed by <a href="https://www.anamoldhakal.com.np/"><strong>Anamol Dhakal</strong></a></sub>
+  <br>
+  <sub>Powered by Python, Google ADK, Gemini, Celery, Redis, MongoDB, and FLUX.1</sub>
 </div>
