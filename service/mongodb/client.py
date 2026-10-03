@@ -64,3 +64,19 @@ class MongoDBService:
             emails = [doc["email"] for doc in cursor if doc.get("email")]
             logging.info(f"[MongoDB] Found {len(emails)} verified subscribers.")
             return emails
+
+    def update_post_image(self, post_id, image_url):
+        """Updates image and thumbnail for a specific post by id."""
+        if not post_id or not image_url:
+            return 0
+        with self._get_client() as client:
+            db = client[self.db_name]
+            col = db[self.collection_name]
+            res = col.update_one(
+                {"id": post_id},
+                {"$set": {"image": image_url, "thumbnail": image_url}}
+            )
+            logging.info(
+                f"[MongoDB] Post '{post_id}' image updated: matched={res.matched_count}, modified={res.modified_count}"
+            )
+            return res.modified_count

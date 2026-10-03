@@ -91,7 +91,6 @@ class RootAgentConfig:
             "title": "Compelling, Professional, High-CTR Headline",
             "description": "A crisp, engaging 2-3 sentence teaser that hooks the reader.",
             "content": "Full markdown-formatted technical article (400+ words) with ## subheadings.",
-            "image_keyword": "Exactly two words representing the core subject for photography search (e.g. 'Cloud Server', 'Quantum Computing')",
             "image_prompt": "A vivid, cinematic 1-paragraph prompt for text-to-image generator describing visual subjects, futuristic lighting, high-tech ambiance, 16:9 aspect ratio."
           }
         ]

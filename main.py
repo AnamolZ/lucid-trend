@@ -7,6 +7,8 @@ import time
 import asyncio
 import logging
 import schedule
+import threading
+import uvicorn
 from dotenv import load_dotenv
 
 from engine.root_agent import RootAgentEngine
@@ -14,6 +16,7 @@ from service.data_cleaning.gemini import fast_extract, detect_duplicates
 from service.mongodb.client import MongoDBService
 from service.mongodb.insert_posts import insert_posts
 from service.emails.notify_subscriber import notify_subscribers
+from service.cleanup.temp_cleaner import clean_temp_directory
 from config.logging_config import setup_logging
 from config.model_pool import get_active_model, get_active_key, coordinator
 
@@ -67,9 +70,10 @@ async def run_pipeline():
     Executes the autonomous tech intelligence pipeline:
     1. Scouts 24-hr breaking tech news & conducts deep investigative research.
     2. Synthesizes publication-grade markdown articles.
-    3. Generates high-resolution visuals via Celery (FLUX.1-schnell / Unsplash).
-    4. Inserts posts into MongoDB and performs zero-token deduplication.
-    5. Dispatches responsive email newsletters to verified subscribers.
+    3. Inserts posts immediately into MongoDB with default image (non-blocking).
+    4. Dispatches professional editorial newsletter immediately (text-only).
+    5. Deduplicates posts in MongoDB.
+    6. Asynchronously synthesizes FLUX.1 visual assets across 4 keys (with 5-min retry backoff) and updates MongoDB.
     """
     active_key = get_active_key()
     masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "***"
@@ -103,12 +107,15 @@ async def run_pipeline():
             return False
         logging.info(f"[DataExtraction] Extracted {len(articles)} curated articles with zero token overhead.")
 
-        # Step 3: Celery visual generation and MongoDB insertion
+        # Step 3: Immediate MongoDB insertion (asynchronously queues background image generation)
         inserted_docs = await safe_execute("InsertPosts", insert_posts, articles)
         if not inserted_docs:
             logging.warning("[Pipeline] No articles inserted into database.")
 
-        # Step 4: Zero-token fuzzy duplicate detection and cleanup
+        # Step 4: Immediate editorial newsletter dispatch (text-only, professional delivery)
+        await safe_execute("NotifySubscribers", notify_subscribers, articles)
+
+        # Step 5: Zero-token fuzzy duplicate detection and cleanup
         mongo_service = MongoDBService()
         existing_posts = await safe_execute("FetchPosts", mongo_service.fetch_all_posts)
         if existing_posts:
@@ -118,11 +125,9 @@ async def run_pipeline():
             else:
                 logging.info("[DuplicateDetection] Database clean: 0 duplicate articles detected.")
 
-        # Step 5: Zero-token newsletter dispatch via Celery
-        await safe_execute("NotifySubscribers", notify_subscribers, articles)
-
         logging.info("=" * 65)
-        logging.info("[Pipeline] Cycle completed successfully. All tasks finished.")
+        logging.info("[Pipeline] Cycle completed successfully. Articles published and emails dispatched.")
+        logging.info("[Pipeline] Background workers are synthesizing FLUX.1 images asynchronously.")
         logging.info("=" * 65)
         return True
 
@@ -141,18 +146,38 @@ async def run_daily_cycle():
             logging.warning("[Scheduler] Pipeline cycle did not produce output. Retrying in 5 minutes...")
             await asyncio.sleep(300)
 
+def start_api_server():
+    """Runs the authenticated FastAPI management server."""
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("SERVER_PORT", "8000"))
+    logging.info(f"[API Server] Management server running on http://{host}:{port}")
+    uvicorn.run("api.server:app", host=host, port=port, log_level="warning")
+
 def start_scheduler():
     logging.info("[Scheduler] Autonomous daemon active. Scheduled daily at 05:00 and 17:00 Asia/Kathmandu.")
     schedule.every().day.at("05:00").do(lambda: asyncio.run(run_daily_cycle()))
     schedule.every().day.at("17:00").do(lambda: asyncio.run(run_daily_cycle()))
-    
+
+    # Automated 1-hour temp directory cleanup
+    schedule.every(1).hours.do(lambda: clean_temp_directory(max_age_seconds=3600))
+    logging.info("[Scheduler] Automated 1-hour temporary folder cleanup job registered.")
+
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 if __name__ == "__main__":
+    # Start authenticated API management server in background thread for live CLI/API interaction
+    api_thread = threading.Thread(target=start_api_server, daemon=True)
+    api_thread.start()
+
     if "--now" in sys.argv or "--run-now" in sys.argv:
         logging.info("[CLI] Executing immediate on-demand run (--now flag provided)...")
         asyncio.run(run_daily_cycle())
+        start_scheduler()
+    elif "--api-only" in sys.argv or "--server-only" in sys.argv:
+        logging.info("[CLI] Running in dedicated API server mode.")
+        while True:
+            time.sleep(1)
     else:
         start_scheduler()

@@ -11,3 +11,11 @@ wheels/
 
 # Environment variable files
 .env
+
+# Application logs
+logs/
+*.log
+
+# Temporary test outputs & auto-cleared directories
+flux_test_output.png
+temp/

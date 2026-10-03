@@ -1,5 +1,7 @@
+import os
 import re
 import logging
+from logging.handlers import RotatingFileHandler
 
 class GeminiLogFilter(logging.Filter):
     """
@@ -52,27 +54,59 @@ class GeminiLogFilter(logging.Filter):
         return True
 
 def setup_logging():
-    """Configures application-wide logging with clean timestamps and filter attachments."""
-    root_logger = logging.getLogger()
-    
-    # Configure root format if not already configured
-    if not root_logger.handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s | %(levelname)-7s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        )
-    else:
-        root_logger.setLevel(logging.INFO)
-        for h in root_logger.handlers:
-            h.setFormatter(logging.Formatter(
-                fmt="%(asctime)s | %(levelname)-7s | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S"
-            ))
+    """
+    Configures application-wide logging:
+    1. Console output with clean formatting.
+    2. Combined log file: logs/app.log (all messages >= INFO).
+    3. Error-only log file: logs/error.log (all messages >= ERROR).
+    """
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+    os.makedirs(log_dir, exist_ok=True)
 
-    # Attach filter to root and third-party loggers
+    app_log_file = os.path.join(log_dir, "app.log")
+    error_log_file = os.path.join(log_dir, "error.log")
+
+    log_format = "%(asctime)s | %(levelname)-7s | %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Clear existing handlers to prevent duplicates
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # 1. Console Handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # 2. Combined App File Handler (Rotating: 10 MB, up to 5 backups)
+    app_file_handler = RotatingFileHandler(
+        app_log_file,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8"
+    )
+    app_file_handler.setLevel(logging.INFO)
+    app_file_handler.setFormatter(formatter)
+    root_logger.addHandler(app_file_handler)
+
+    # 3. Error-Only File Handler (Rotating: 10 MB, up to 5 backups)
+    error_file_handler = RotatingFileHandler(
+        error_log_file,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8"
+    )
+    error_file_handler.setLevel(logging.ERROR)
+    error_file_handler.setFormatter(formatter)
+    root_logger.addHandler(error_file_handler)
+
+    # Attach filter to handlers
     gemini_filter = GeminiLogFilter()
-    root_logger.addFilter(gemini_filter)
     for h in root_logger.handlers:
         h.addFilter(gemini_filter)
 

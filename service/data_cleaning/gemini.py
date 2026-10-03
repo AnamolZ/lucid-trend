@@ -61,7 +61,6 @@ def extract_with_llm(raw, model):
             "title": "string",
             "description": "string",
             "content": "string",
-            "image_keyword": "string",
             "image_prompt": "string"
           }}
         ]
