@@ -4,6 +4,33 @@ This guide explains how to install, configure, operate, and interact with the Lu
 
 ---
 
+## Quick Start
+
+### 1. Start the Server (Native or Docker)
+```bash
+# Native execution
+python main.py
+
+# Or via Docker Compose
+docker-compose up -d --build
+```
+
+### 2. Connect via the Interactive CLI
+The CLI connects directly to the running server using your configured API key:
+
+```bash
+# Check server health
+python cli.py status
+
+# Run intelligence pipeline without writing to DB or sending emails
+python cli.py pipeline --without email,db,image
+
+# Generate a visual asset on-demand
+python cli.py generate-image --title "Autonomous Agentic AI"
+```
+
+---
+
 ## 1. Prerequisites and Installation
 
 LucidTrend can be deployed either via **Docker Compose** (recommended for production daemon deployment) or run **natively with Python and `uv`**.

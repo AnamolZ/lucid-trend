@@ -20,14 +20,6 @@ flowchart LR
     H -.-> B
 ```
 
-### Core Architecture Highlights
-
-* **Autonomous Multi-Agent Scouting**: Powered by Google Agent Development Kit (ADK) and Gemini 3.7 Flash, the intelligence engine monitors releases, architectural shifts, and benchmarks strictly within a 24-hour window.
-* **Deterministic Non-Blocking Publishing**: News articles are parsed locally with zero token overhead and published immediately to MongoDB, ensuring zero latency for readers and API consumers.
-* **Resilient Image Synthesis**: Visual assets are created exclusively via `black-forest-labs/FLUX.1-schnell` using an automated 4-key rotation mechanism with a 5-minute backoff retry ladder. As soon as an image is ready, the post is updated in-place.
-* **Editorial-Grade Newsletters**: Dispatches clean, text-only briefings to verified subscribers using a disciplined, publication-grade layout free of artificial gimmicks.
-* **Interactive CLI & Management API**: Includes an authenticated FastAPI server and companion command-line interface (`cli.py`) enabling operators to trigger modular runs (`--with` / `--without` flags), generate isolated images, and inspect live prompts without interrupting the running daemon.
-
 ---
 
 ## Detailed Documentation
@@ -35,34 +27,7 @@ flowchart LR
 For in-depth explanations, configuration guides, and architectural diagrams, refer to the dedicated documentation files:
 
 * **[Architecture & Mechanism Guide (docs/mechanism.md)](docs/mechanism.md)**: Comprehensive deep dive into the cascading failover algorithms, asynchronous image ladder, deterministic data extraction, and component communication protocols with full Mermaid flowcharts.
-* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Complete step-by-step instructions for cloning, setting up `.env` credentials, running natively or via Docker Compose, manual API testing with Postman and cURL, and full CLI usage.
-
----
-
-## Quick Start
-
-### 1. Start the Server (Native or Docker)
-```bash
-# Native execution
-python main.py
-
-# Or via Docker Compose
-docker-compose up -d --build
-```
-
-### 2. Connect via the Interactive CLI
-The CLI connects directly to the running server using your configured API key:
-
-```bash
-# Check server health
-python cli.py status
-
-# Run intelligence pipeline without writing to DB or sending emails
-python cli.py pipeline --without email,db,image
-
-# Generate a visual asset on-demand
-python cli.py generate-image --title "Autonomous Agentic AI"
-```
+* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Complete step-by-step instructions for quick start, cloning, setting up `.env` credentials, running natively or via Docker Compose, manual API testing with Postman and cURL, and full CLI usage.
 
 ---
 
