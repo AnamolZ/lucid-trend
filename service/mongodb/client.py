@@ -1,3 +1,5 @@
+"""Database persistence service for managing articles, deduplication, and subscribers in MongoDB."""
+
 import os
 import logging
 from pymongo import MongoClient
@@ -6,22 +8,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class MongoDBService:
-    """
-    Unified MongoDB management service for LucidTrend.
-    Handles blog posts, deduplication, and verified subscriber retrieval.
-    """
-    def __init__(self, uri=None, db_name=None, collection_name=None):
+    """Provides structured data access and persistence operations on MongoDB collections."""
+
+    def __init__(self, uri: str = None, db_name: str = None, collection_name: str = None):
         self.uri = uri or os.getenv("MONGO_URI")
         self.db_name = db_name or os.getenv("DATABASE_NAME", "portfolio_db")
         self.collection_name = collection_name or os.getenv("COLLECTION_NAME", "posts")
 
-    def _get_client(self):
+    def _get_client(self) -> MongoClient:
         if not self.uri:
             raise ValueError("MongoDB URI is not configured.")
         return MongoClient(self.uri)
 
-    def insert_documents(self, documents):
-        """Inserts processed article documents into MongoDB."""
+    def insert_documents(self, documents: list) -> list:
+        """Persists newly synthesized article documents into the collection."""
         if not documents:
             return []
         with self._get_client() as client:
@@ -32,8 +32,8 @@ class MongoDBService:
             logging.info(f"[MongoDB] Inserted {inserted_count} articles into '{self.collection_name}'.")
             return res.inserted_ids
 
-    def fetch_all_posts(self):
-        """Fetches lightweight post identifiers for deduplication."""
+    def fetch_all_posts(self) -> list:
+        """Retrieves lightweight article metadata for local duplicate detection."""
         with self._get_client() as client:
             db = client[self.db_name]
             col = db[self.collection_name]
@@ -41,8 +41,8 @@ class MongoDBService:
             logging.info(f"[MongoDB] Fetched {len(posts)} existing posts.")
             return posts
 
-    def remove_duplicate_posts(self, duplicate_ids):
-        """Deletes posts matching duplicate IDs."""
+    def remove_duplicate_posts(self, duplicate_ids: list) -> int:
+        """Deletes database records matching the specified duplicate article identifiers."""
         if not duplicate_ids:
             return 0
         with self._get_client() as client:
@@ -55,8 +55,8 @@ class MongoDBService:
                 logging.info(f"[MongoDB] Deleted duplicate post: {dup_id}")
             return total_deleted
 
-    def get_verified_subscribers(self, sub_collection="notification_address"):
-        """Retrieves list of verified newsletter subscriber email addresses."""
+    def get_verified_subscribers(self, sub_collection: str = "notification_address") -> list:
+        """Queries and returns the list of verified newsletter subscriber email addresses."""
         with self._get_client() as client:
             db = client[self.db_name]
             col = db[sub_collection]
@@ -65,8 +65,8 @@ class MongoDBService:
             logging.info(f"[MongoDB] Found {len(emails)} verified subscribers.")
             return emails
 
-    def update_post_image(self, post_id, image_url):
-        """Updates image and thumbnail for a specific post by id."""
+    def update_post_image(self, post_id: str, image_url: str) -> int:
+        """Updates the image and thumbnail URLs in-place for a specific article document."""
         if not post_id or not image_url:
             return 0
         with self._get_client() as client:

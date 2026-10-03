@@ -1,7 +1,11 @@
+"""Real-time technology news scouting agent builder."""
+
 from config.config import NewsEngineConfig
 from engine.agent_engine import AgentEngine
 
 class NewsEngine:
+    """Instantiates the NewsFindingAgent for discovering 24-hour tech developments."""
+
     def __init__(self):
         self.config = NewsEngineConfig()
         self.agent_name = self.config.agent_name
@@ -10,7 +14,8 @@ class NewsEngine:
         self.tools = list(self.config.tools)
         self.output_key = self.config.output_key
 
-    def news_agent(self, model_name=None):
+    def news_agent(self, model_name: str = None):
+        """Builds and returns the configured ADK news scouting agent."""
         engine = AgentEngine(
             self.agent_name, 
             self.description, 

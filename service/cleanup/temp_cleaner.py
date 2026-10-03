@@ -1,19 +1,18 @@
+"""Utility service for managing and purging temporary files generated during runtime."""
+
 import os
 import time
 import logging
 
 TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "temp")
 
-def ensure_temp_dir():
-    """Ensures that the temp directory exists."""
+def ensure_temp_dir() -> str:
+    """Verifies that the temporary directory exists and returns its absolute path."""
     os.makedirs(TEMP_DIR, exist_ok=True)
     return TEMP_DIR
 
-def clean_temp_directory(max_age_seconds: int = 3600):
-    """
-    Cleans up files in the temp directory older than max_age_seconds (default 1 hour).
-    If max_age_seconds is 0, purges all files in the directory.
-    """
+def clean_temp_directory(max_age_seconds: int = 3600) -> int:
+    """Purges files from the temporary directory that exceed the maximum age threshold."""
     if not os.path.exists(TEMP_DIR):
         return 0
 

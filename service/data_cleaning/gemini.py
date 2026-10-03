@@ -1,21 +1,19 @@
+"""Data extraction and duplicate detection services with zero-token local processing."""
+
 import json
 import time
 import re
 import logging
 from difflib import SequenceMatcher
 
-def fast_extract(raw, model=None):
-    """
-    Zero-token fast local JSON extractor.
-    Parses structured articles directly without consuming Gemini API tokens.
-    Falls back to LLM extraction only if raw text is severely malformed.
-    """
+def fast_extract(raw: str, model=None) -> list:
+    """Parses structured JSON articles locally without token consumption, falling back to LLM if needed."""
     if not raw or not isinstance(raw, str):
         return []
 
     text = raw.strip()
 
-    # 1. Direct JSON parse
+    # Attempt direct JSON parsing
     try:
         data = json.loads(text)
         if isinstance(data, list) and len(data) > 0:
@@ -23,7 +21,7 @@ def fast_extract(raw, model=None):
     except Exception:
         pass
 
-    # 2. Extract from markdown code fences ```json ... ```
+    # Extract JSON content enclosed within markdown code fences
     fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
     if fence_match:
         try:
@@ -33,7 +31,7 @@ def fast_extract(raw, model=None):
         except Exception:
             pass
 
-    # 3. Extract bracketed array [...]
+    # Extract bracketed array payload via regex
     array_match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
     if array_match:
         try:
@@ -43,15 +41,15 @@ def fast_extract(raw, model=None):
         except Exception:
             pass
 
-    # 4. Fallback to Gemini extraction only if local extraction fails
+    # Trigger fallback LLM extraction only when all deterministic parsers fail
     if model:
         logging.info("[Extraction] Local parser encountered non-JSON output; invoking fallback LLM extractor.")
         return extract_with_llm(raw, model)
 
     return []
 
-def extract_with_llm(raw, model):
-    """Fallback LLM extractor for malformed agent responses."""
+def extract_with_llm(raw: str, model) -> list:
+    """Fallback LLM extractor for malformed agent outputs."""
     prompt = f"""
         Extract news/article data from the raw text into a valid JSON array:
         [
@@ -75,12 +73,8 @@ def extract_with_llm(raw, model):
         logging.error(f"[Extraction] Fallback LLM extraction failed: {e}")
         return []
 
-def local_detect_duplicates(posts, model=None, similarity_threshold=0.75):
-    """
-    Zero-token local duplicate detection.
-    Compares article slugs and computes fuzzy title similarity (>75%).
-    100% immune to API rate limits and quotas.
-    """
+def local_detect_duplicates(posts: list, model=None, similarity_threshold: float = 0.75) -> list:
+    """Detects duplicate articles locally using identifier matching and title similarity ratios."""
     if not posts or len(posts) < 2:
         return []
 
@@ -113,5 +107,6 @@ def local_detect_duplicates(posts, model=None, similarity_threshold=0.75):
 
     return list(duplicates)
 
-def detect_duplicates(posts, model=None):
+def detect_duplicates(posts: list, model=None) -> list:
+    """Entrypoint for article duplicate detection."""
     return local_detect_duplicates(posts, model)

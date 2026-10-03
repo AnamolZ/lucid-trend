@@ -1,8 +1,11 @@
+"""Configuration definitions for agent personas, tools, and output schemas."""
+
 from dataclasses import dataclass
 from google.adk.tools import google_search
 
 @dataclass
 class NewsEngineConfig:
+    """Configuration for real-time news scouting agent."""
     agent_name: str = "NewsFindingAgent"
     description: str = "Provide a concise, structured tech news bulletin covering the top breakthrough developments from the last 24 hours."
     output_key: str = "newsFindings"
@@ -32,6 +35,7 @@ class NewsEngineConfig:
 
 @dataclass
 class DeepSearchConfig:
+    """Configuration for deep investigative technical research agent."""
     agent_name: str = "DeepInvestigator"
     description: str = "Perform a deep-dive investigation into verified tech news headlines strictly within the last 24 hours."
     output_key: str = "deepNewsSearch"
@@ -55,6 +59,7 @@ class DeepSearchConfig:
 
 @dataclass
 class RootAgentConfig:
+    """Configuration for editor-in-chief synthesis and publication coordinator."""
     agent_name: str = "NewsCoordinator"
     description: str = "Coordinates the intelligence pipeline to produce authoritative, high-engagement tech briefings."
     output_key: str = "deepNewsSummary"

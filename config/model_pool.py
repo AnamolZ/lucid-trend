@@ -1,11 +1,11 @@
+"""Manages Gemini model tier cascading and API key rotation for free-tier resilience."""
+
 import os
 import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Verified Free-Tier models on Google AI Studio ranked by output quality & reasoning depth
-# Models verified responding with HTTP 200 across active keys
 MODEL_POOL = [
     "gemini-3.7-flash",
     "gemini-flash-latest",
@@ -16,26 +16,22 @@ MODEL_POOL = [
 ]
 
 class KeyModelCoordinator:
-    """
-    Coordinates multi-model and multi-API-key cascading failover.
-    Ensures 100% perpetual uptime on free tier by rotating keys on quota limits,
-    and cascading down through the model pool if all keys for a model are exhausted.
-    """
+    """Coordinates API key rotation and model tier cascading upon quota exhaustion."""
+
     def __init__(self):
         self.raw_keys = self._load_keys()
         self.bad_keys = set()
         self.model_index = 0
         self.key_index = 0
         self.models = MODEL_POOL
-        
-        # Override initial model if user configured GEMINI_MODEL in .env
+
         env_model = os.getenv("GEMINI_MODEL")
         if env_model and env_model in self.models:
             self.model_index = self.models.index(env_model)
 
         self._sync_environment()
 
-    def _load_keys(self):
+    def _load_keys(self) -> list:
         raw = os.getenv("GOOGLE_API_KEYS") or os.getenv("GOOGLE_API_KEY") or ""
         parsed = [k.strip() for k in raw.split(",") if k.strip()]
         if not parsed:
@@ -44,7 +40,7 @@ class KeyModelCoordinator:
         return parsed
 
     @property
-    def valid_keys(self):
+    def valid_keys(self) -> list:
         active = [k for k in self.raw_keys if k not in self.bad_keys]
         return active if active else self.raw_keys
 
@@ -60,29 +56,28 @@ class KeyModelCoordinator:
                 pass
 
     def get_active_model(self) -> str:
+        """Returns the currently active Gemini model name."""
         return self.models[self.model_index % len(self.models)]
 
     def get_active_key(self) -> str:
+        """Returns the currently active API key."""
         keys = self.valid_keys
         if not keys:
             return ""
         return keys[self.key_index % len(keys)]
 
-    def get_active_pair(self):
-        """Returns tuple of (active_model_name, active_api_key)."""
+    def get_active_pair(self) -> tuple:
+        """Returns the current active model name and API key pair."""
         self._sync_environment()
         return self.get_active_model(), self.get_active_key()
 
-    def report_failure(self, failed_model: str = None, failed_key: str = None, error_code: str = ""):
-        """
-        Rotates key first on 429/503/404/403. If all keys for current model are exhausted,
-        cascades to the next model in the pool.
-        """
+    def report_failure(self, failed_model: str = None, failed_key: str = None, error_code: str = "") -> tuple:
+        """Rotates active key or cascades to the next model tier upon failure."""
         current_key = failed_key or self.get_active_key()
         current_model = failed_model or self.get_active_model()
         err_text = str(error_code).upper()
 
-        # If permanent auth/permission error (403, 400, 404, PERMISSION_DENIED), permanently blacklist key
+        # Blacklist key permanently for this session on authentication or project permission failures
         if any(term in err_text for term in ["403", "400", "404", "PERMISSION_DENIED"]):
             if current_key:
                 masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
@@ -93,8 +88,8 @@ class KeyModelCoordinator:
 
         keys = self.valid_keys
         total_keys = len(keys)
-        
-        # If multiple valid keys exist for this model, rotate to next key
+
+        # Rotate to the next available API key within the current model tier
         if total_keys > 1 and (self.key_index + 1) < total_keys:
             prev_idx = self.key_index + 1
             self.key_index += 1
@@ -105,7 +100,7 @@ class KeyModelCoordinator:
                 f"[Key Rotation] Key #{prev_idx} reached quota ({error_code or 'limit'}). Switched to API Key #{self.key_index + 1} ({masked}) on model '{new_model}'."
             )
         else:
-            # All keys exhausted for this model -> cascade down to next model tier and reset key index
+            # Cascade down to the next model tier when all keys for the current model are exhausted
             prev_model = self.get_active_model()
             self.key_index = 0
             self.model_index = (self.model_index + 1) % len(self.models)
@@ -119,21 +114,25 @@ class KeyModelCoordinator:
         self._sync_environment()
         return self.get_active_model(), self.get_active_key()
 
-# Singleton coordinator instance
 coordinator = KeyModelCoordinator()
 
-def get_active_model():
+def get_active_model() -> str:
+    """Retrieves the active model identifier."""
     return coordinator.get_active_model()
 
-def get_active_key():
+def get_active_key() -> str:
+    """Retrieves the active API key."""
     return coordinator.get_active_key()
 
-def get_active_pair():
+def get_active_pair() -> tuple:
+    """Retrieves the active model and API key pair."""
     return coordinator.get_active_pair()
 
-def rotate_model(failed_model=None, error_code=""):
+def rotate_model(failed_model=None, error_code="") -> str:
+    """Triggers failover and returns the newly active model."""
     model, _ = coordinator.report_failure(failed_model=failed_model, error_code=error_code)
     return model
 
-def report_failure(failed_model=None, failed_key=None, error_code=""):
+def report_failure(failed_model=None, failed_key=None, error_code="") -> tuple:
+    """Reports a failure to the coordinator to trigger failover."""
     return coordinator.report_failure(failed_model, failed_key, error_code)

@@ -1,10 +1,9 @@
+"""HTML email template generator for editorial subscriber newsletters."""
+
 from datetime import datetime
 
 def notify_subscriber_template(header: str, news_content: str, user_email: str) -> str:
-    """
-    Renders an editorial-grade, text-only HTML email briefing for engineering professionals.
-    Designed for maximum deliverability, readability, and authority without gimmicky AI aesthetics.
-    """
+    """Renders a responsive, text-only HTML briefing designed for high deliverability and clarity."""
     current_date = datetime.now().strftime("%B %d, %Y")
 
     return f"""<!DOCTYPE html>

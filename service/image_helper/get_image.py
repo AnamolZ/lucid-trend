@@ -1,3 +1,5 @@
+"""Hugging Face FLUX.1 image synthesis client with multi-key rotation and retry ladders."""
+
 import io
 import os
 import time
@@ -9,20 +11,14 @@ from huggingface_hub import InferenceClient
 load_dotenv()
 
 class HuggingFaceKeyCoordinator:
-    """
-    Coordinates multi-key failover for Hugging Face inference.
-    Features:
-    - Multi-key rotation across all configured tokens.
-    - 3-round retry ladder: if all keys fail, pauses 5 minutes before retrying.
-    - Up to 3 full cycles before concluding.
-    - Automatic blacklisting of permanently invalid tokens (401/403).
-    - Preserves last successful key index.
-    """
+    """Coordinates key rotation, retry cycles, and backoff pauses for FLUX.1 generation."""
+
     def __init__(self):
         self.bad_keys = set()
         self.key_index = 0
 
     def get_tokens(self, token_hint: str = None) -> list:
+        """Parses and deduplicates Hugging Face access tokens from parameters and environment."""
         raw = []
         if token_hint:
             raw.extend(token_hint.split(","))
@@ -35,7 +31,7 @@ class HuggingFaceKeyCoordinator:
         if env_tokens:
             raw.extend(env_tokens.split(","))
 
-        # Deduplicate while preserving configured order
+        # Preserve insertion order while eliminating duplicates
         seen = set()
         cleaned = []
         for t in raw:
@@ -46,6 +42,7 @@ class HuggingFaceKeyCoordinator:
         return cleaned
 
     def generate_image(self, prompt: str, token_hint: str = None, max_rounds: int = 3, wait_seconds: int = 300) -> str:
+        """Generates a PNG image via FLUX.1-schnell, rotating through active keys with backoff pauses."""
         tokens = self.get_tokens(token_hint)
         if not tokens:
             logging.error("[HuggingFace] No Hugging Face tokens configured in environment.")
@@ -65,7 +62,7 @@ class HuggingFaceKeyCoordinator:
                 f"[HuggingFace] Starting generation attempt (Round {round_num}/{max_rounds}) across {total_keys} active keys..."
             )
 
-            # Cycle through all available keys in this round
+            # Iterate sequentially through available keys in current round
             for offset in range(total_keys):
                 idx = (start_idx + offset) % total_keys
                 token = active_tokens[idx]
@@ -108,7 +105,7 @@ class HuggingFaceKeyCoordinator:
                             f"[HuggingFace Failover] Switching to Key #{tokens.index(next_token) + 1} ({next_masked})..."
                         )
 
-            # If all keys failed in this round, wait before starting next round
+            # Apply backoff pause between exhaustion rounds
             if round_num < max_rounds:
                 logging.warning(
                     f"[HuggingFace Backoff] All {total_keys} keys exhausted in Round {round_num}. "
@@ -123,14 +120,10 @@ class HuggingFaceKeyCoordinator:
 
         return None
 
-# Singleton coordinator instance
 hf_coordinator = HuggingFaceKeyCoordinator()
 
 def huggingface_image(hf_token: str = None, prompt: str = None, max_rounds: int = 3, wait_seconds: int = 300) -> str:
-    """
-    Generates a visual asset using FLUX.1-schnell with automatic multi-key rotation and 3-round 5-minute backoff ladder.
-    Returns a data URI base64 PNG string, or None if all attempts fail.
-    """
+    """Generates an image via FLUX.1-schnell with key rotation and backoff ladder, returning data URI."""
     if prompt is None and hf_token is not None:
         prompt = hf_token
         hf_token = None

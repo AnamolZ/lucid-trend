@@ -1,3 +1,5 @@
+"""Agent execution engine with automatic session runner and cascading failover handling."""
+
 import os
 import asyncio
 import logging
@@ -11,7 +13,9 @@ from config.model_pool import get_active_model, get_active_key, report_failure, 
 setup_logging()
 
 class AgentEngine:
-    def __init__(self, agent_name, description, instruction, tools, output_key, on_failover=None):
+    """Wraps Google ADK Agent and InMemoryRunner with resilient execution and failover hooks."""
+
+    def __init__(self, agent_name: str, description: str, instruction: str, tools: list, output_key: str, on_failover=None):
         self.retry_config = types.HttpRetryOptions(
             attempts=2,
             exp_base=2,
@@ -29,12 +33,13 @@ class AgentEngine:
         self.model_name = get_active_model()
         self.api_key = get_active_key()
 
-    def agent_creation(self, model_name=None):
+    def agent_creation(self, model_name: str = None):
+        """Initializes the underlying ADK Agent with current model and retry parameters."""
         if model_name:
             self.model_name = model_name
         else:
             self.model_name = get_active_model()
-            
+
         self.agent = Agent(
             name=self.agent_name,
             model=Gemini(
@@ -48,24 +53,25 @@ class AgentEngine:
         )
 
     def agent_runner(self):
+        """Initializes an in-memory session runner for the agent."""
         if not self.agent:
             raise RuntimeError("Agent not created.")
         self.runner = InMemoryRunner(agent=self.agent, app_name="agents")
 
-    async def agent_response(self, ask: str):
+    async def agent_response(self, ask: str) -> str:
+        """Executes the agent query with automated tool logging and multi-key failover handling."""
         if not self.runner:
             raise RuntimeError("Runner not initialized.")
 
         attempt_count = 0
-        max_attempts = 12  # Sufficient retry attempts across all 4 keys and model tiers
+        max_attempts = 12  # Retry ceiling across all key rotations and model pool tiers
 
         while attempt_count < max_attempts:
             attempt_count += 1
             try:
                 active_key_num = coordinator.key_index + 1
                 logging.info(f"[{self.agent_name}] Processing query on '{self.model_name}' (Key #{active_key_num})...")
-                
-                # quiet=True suppresses raw session dump; logging handles clean output
+
                 events = await self.runner.run_debug(ask, quiet=True)
                 response = ""
 
@@ -85,12 +91,13 @@ class AgentEngine:
                 if response:
                     logging.info(f"[{self.agent_name}] Response synthesized successfully ({len(response)} chars).")
                     return response
-                
+
                 await asyncio.sleep(1)
 
             except Exception as e:
                 err_str = str(e)
-                # Catch rate limits, service busy, 403 permission errors, or 404 missing models
+
+                # Identify error classifications to trigger appropriate failover
                 if any(code in err_str for code in ["429", "ResourceExhausted", "503", "500", "404", "403", "400", "PERMISSION_DENIED"]):
                     if "429" in err_str or "ResourceExhausted" in err_str:
                         reason = "429 Rate Limit"

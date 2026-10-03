@@ -1,17 +1,17 @@
+"""Application logging configuration with transport noise filtering and rotating log files."""
+
 import os
 import re
 import logging
 from logging.handlers import RotatingFileHandler
 
 class GeminiLogFilter(logging.Filter):
-    """
-    Transforms raw HTTP transport logs from httpx and Google GenAI into clean,
-    detailed, professional status messages, suppressing raw noise and internal transport dumps.
-    """
+    """Filters noisy transport logs and transforms Gemini status codes into clear alerts."""
+
     def filter(self, record):
         msg = record.getMessage()
 
-        # Suppress routine internal ADK connection dumps
+        # Suppress routine connection and transport noise
         if any(noise in msg for noise in [
             "Sending out request, model:",
             "Connecting to live for model:",
@@ -20,7 +20,7 @@ class GeminiLogFilter(logging.Filter):
         ]):
             return False
 
-        # Handle 429 Too Many Requests (Rate limit / Quota)
+        # Translate rate limit and quota exhaustion
         if "429" in msg and ("generativelanguage" in msg or "gemini" in msg.lower()):
             model_match = re.search(r"models/([^:\"]+)", msg)
             model_name = model_match.group(1) if model_match else "Gemini API"
@@ -30,7 +30,7 @@ class GeminiLogFilter(logging.Filter):
             record.levelname = "INFO"
             return True
 
-        # Handle 503 Service Unavailable / Overloaded
+        # Translate server overload status
         if "503" in msg and ("generativelanguage" in msg or "gemini" in msg.lower()):
             record.msg = "[Service Alert] Gemini server temporarily busy (503). Applying exponential backoff..."
             record.args = ()
@@ -38,7 +38,7 @@ class GeminiLogFilter(logging.Filter):
             record.levelname = "INFO"
             return True
 
-        # Handle 403 Forbidden / Project Denied
+        # Translate permission and authentication errors
         if "403" in msg and ("generativelanguage" in msg or "gemini" in msg.lower()):
             record.msg = "[Auth Alert] API key lacks permissions or project disabled (403). Blacklisting key and rotating..."
             record.args = ()
@@ -46,7 +46,7 @@ class GeminiLogFilter(logging.Filter):
             record.levelname = "WARNING"
             return True
 
-        # Suppress routine 200 OK transport lines
+        # Suppress routine successful HTTP transport lines
         if "HTTP Request:" in msg and "generativelanguage" in msg:
             if any(ok_code in msg for ok_code in ["200 OK", "200", "304"]):
                 return False
@@ -54,12 +54,7 @@ class GeminiLogFilter(logging.Filter):
         return True
 
 def setup_logging():
-    """
-    Configures application-wide logging:
-    1. Console output with clean formatting.
-    2. Combined log file: logs/app.log (all messages >= INFO).
-    3. Error-only log file: logs/error.log (all messages >= ERROR).
-    """
+    """Configures console and rotating file loggers for application events and errors."""
     log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
     os.makedirs(log_dir, exist_ok=True)
 
@@ -73,17 +68,14 @@ def setup_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # Clear existing handlers to prevent duplicates
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # 1. Console Handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # 2. Combined App File Handler (Rotating: 10 MB, up to 5 backups)
     app_file_handler = RotatingFileHandler(
         app_log_file,
         maxBytes=10 * 1024 * 1024,
@@ -94,7 +86,6 @@ def setup_logging():
     app_file_handler.setFormatter(formatter)
     root_logger.addHandler(app_file_handler)
 
-    # 3. Error-Only File Handler (Rotating: 10 MB, up to 5 backups)
     error_file_handler = RotatingFileHandler(
         error_log_file,
         maxBytes=10 * 1024 * 1024,
@@ -105,7 +96,6 @@ def setup_logging():
     error_file_handler.setFormatter(formatter)
     root_logger.addHandler(error_file_handler)
 
-    # Attach filter to handlers
     gemini_filter = GeminiLogFilter()
     for h in root_logger.handlers:
         h.addFilter(gemini_filter)

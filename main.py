@@ -1,3 +1,5 @@
+"""Main application entrypoint initializing the scheduler daemon, pipeline runner, and API server."""
+
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -22,7 +24,7 @@ from config.model_pool import get_active_model, get_active_key, coordinator
 
 setup_logging()
 
-# Configure timezone
+# Initialize operational timezone
 try:
     os.environ['TZ'] = 'Asia/Kathmandu'
     if hasattr(time, 'tzset'):
@@ -41,6 +43,7 @@ REQUIRED_ENV = [
 ]
 
 def validate_environment():
+    """Validates the presence of required configuration parameters and API credentials."""
     missing = [k for k in REQUIRED_ENV if not os.getenv(k)]
     has_api_key = os.getenv("GOOGLE_API_KEYS") or os.getenv("GOOGLE_API_KEY")
     if not has_api_key:
@@ -65,32 +68,23 @@ async def safe_execute(step_name: str, func, *args, **kwargs):
         logging.error(f"[{step_name}] Step failed after {elapsed:.2f}s: {str(e)}")
         return None
 
-async def run_pipeline():
-    """
-    Executes the autonomous tech intelligence pipeline:
-    1. Scouts 24-hr breaking tech news & conducts deep investigative research.
-    2. Synthesizes publication-grade markdown articles.
-    3. Inserts posts immediately into MongoDB with default image (non-blocking).
-    4. Dispatches professional editorial newsletter immediately (text-only).
-    5. Deduplicates posts in MongoDB.
-    6. Asynchronously synthesizes FLUX.1 visual assets across 4 keys (with 5-min retry backoff) and updates MongoDB.
-    """
+async def run_pipeline() -> bool:
+    """Executes autonomous intelligence scouting, article extraction, database publication, and email dispatch."""
     active_key = get_active_key()
     masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "***"
-    
+
     logging.info("=" * 65)
     logging.info(f"[Pipeline] Cycle started | Model: '{get_active_model()}' | Active Key #{coordinator.key_index + 1} ({masked_key})")
     logging.info("=" * 65)
 
     try:
-        # Step 1: Autonomous research & article generation
         root = RootAgentEngine()
         research_prompt = (
             "Identify the top 2 breakthrough technology developments from the past 24 hours. "
             "Conduct deep technical research on architecture, benchmarks, and developer impact, "
             "and produce publication-ready articles matching the specified JSON schema."
         )
-        
+
         reply = await safe_execute(
             "AgentResearch",
             root.root_agent().agent_response,
@@ -100,22 +94,18 @@ async def run_pipeline():
             logging.warning("[Pipeline] Agent returned no data. Pipeline aborted for this cycle.")
             return False
 
-        # Step 2: Zero-token fast local parsing
         articles = await safe_execute("DataExtraction", fast_extract, reply)
         if not articles or not isinstance(articles, list):
             logging.warning("[Pipeline] Extraction found no valid articles.")
             return False
         logging.info(f"[DataExtraction] Extracted {len(articles)} curated articles with zero token overhead.")
 
-        # Step 3: Immediate MongoDB insertion (asynchronously queues background image generation)
         inserted_docs = await safe_execute("InsertPosts", insert_posts, articles)
         if not inserted_docs:
             logging.warning("[Pipeline] No articles inserted into database.")
 
-        # Step 4: Immediate editorial newsletter dispatch (text-only, professional delivery)
         await safe_execute("NotifySubscribers", notify_subscribers, articles)
 
-        # Step 5: Zero-token fuzzy duplicate detection and cleanup
         mongo_service = MongoDBService()
         existing_posts = await safe_execute("FetchPosts", mongo_service.fetch_all_posts)
         if existing_posts:
@@ -136,7 +126,7 @@ async def run_pipeline():
         return False
 
 async def run_daily_cycle():
-    """Executes run_pipeline with retry logic in case of upstream network errors."""
+    """Runs pipeline cycles with automated retry backoff on upstream network failures."""
     while True:
         success = await run_pipeline()
         if success:
@@ -147,18 +137,19 @@ async def run_daily_cycle():
             await asyncio.sleep(300)
 
 def start_api_server():
-    """Runs the authenticated FastAPI management server."""
+    """Launches the authenticated FastAPI management server using uvicorn."""
     host = os.getenv("SERVER_HOST", "0.0.0.0")
     port = int(os.getenv("SERVER_PORT", "8000"))
     logging.info(f"[API Server] Management server running on http://{host}:{port}")
     uvicorn.run("api.server:app", host=host, port=port, log_level="warning")
 
 def start_scheduler():
+    """Initializes and runs the continuous daily scheduler daemon."""
     logging.info("[Scheduler] Autonomous daemon active. Scheduled daily at 05:00 and 17:00 Asia/Kathmandu.")
     schedule.every().day.at("05:00").do(lambda: asyncio.run(run_daily_cycle()))
     schedule.every().day.at("17:00").do(lambda: asyncio.run(run_daily_cycle()))
 
-    # Automated 1-hour temp directory cleanup
+    # Run automated temp cleanup every hour
     schedule.every(1).hours.do(lambda: clean_temp_directory(max_age_seconds=3600))
     logging.info("[Scheduler] Automated 1-hour temporary folder cleanup job registered.")
 
@@ -167,7 +158,7 @@ def start_scheduler():
         time.sleep(1)
 
 if __name__ == "__main__":
-    # Start authenticated API management server in background thread for live CLI/API interaction
+    # Start management API server in background thread for live client interactions
     api_thread = threading.Thread(target=start_api_server, daemon=True)
     api_thread.start()
 

@@ -1,3 +1,5 @@
+"""Asynchronous Celery task definitions for image synthesis and email newsletter distribution."""
+
 import os
 import re
 import json
@@ -42,14 +44,8 @@ AUTHOR = {
 DEFAULT_IMAGE = "https://api.imghippo.com/files/dRXB7409pm.png"
 
 @celery_app.task
-def generate_and_update_image_task(post_id: str, image_prompt: str, title: str):
-    """
-    Asynchronous background image worker:
-    1. Attempts FLUX.1 generation across all keys.
-    2. If all fail, waits 5 minutes before retrying (up to 3 rounds).
-    3. On success, updates MongoDB document in-place.
-    4. If permanently exhausted, retains DEFAULT_IMAGE.
-    """
+def generate_and_update_image_task(post_id: str, image_prompt: str, title: str) -> bool:
+    """Synthesizes FLUX.1 visual assets across the multi-key retry ladder and updates MongoDB in-place."""
     logging.info(f"[ImageWorker] Initiated FLUX.1 generation task for post '{post_id}'...")
 
     if not image_prompt and title:
@@ -75,10 +71,8 @@ def generate_and_update_image_task(post_id: str, image_prompt: str, title: str):
         return False
 
 @celery_app.task
-def generate_image_task(item):
-    """
-    Synchronous fallback for image synthesis.
-    """
+def generate_image_task(item: dict) -> dict:
+    """Synchronous fallback task for single-article image generation."""
     generation_prompt = item.get("image_prompt")
     if not generation_prompt and item.get("title"):
         generation_prompt = (
@@ -103,7 +97,7 @@ def generate_image_task(item):
     }
 
 def _format_article_html(item: dict) -> str:
-    """Transforms raw markdown content into clean, editorial HTML blocks for email delivery."""
+    """Transforms raw markdown content into editorial HTML blocks for email delivery."""
     title = item.get("title", "Technical Update")
     category = item.get("category", ["Breaking News"])
     cat_str = category[0] if isinstance(category, list) and category else str(category)
@@ -170,11 +164,8 @@ def _format_article_html(item: dict) -> str:
     """
 
 @celery_app.task
-def send_email_task(news_json_str):
-    """
-    Sends a professional, text-only editorial newsletter to verified subscribers.
-    Does not include images.
-    """
+def send_email_task(news_json_str: str) -> bool:
+    """Dispatches high-deliverability text-only editorial briefings to verified subscribers."""
     mongo_service = MongoDBService()
     addresses = mongo_service.get_verified_subscribers()
     if not addresses:
@@ -189,7 +180,7 @@ def send_email_task(news_json_str):
     first_title = news_json[0].get("title", "Daily Intelligence Briefing")
     subject = f"LucidTrend Intelligence: {first_title}"
 
-    # Build clean, high-signal editorial blocks (text only)
+    # Render clean editorial layout without heavy images
     blocks = [_format_article_html(item) for item in news_json]
     news_content = "\n".join(blocks)
 

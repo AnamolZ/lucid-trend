@@ -1,3 +1,5 @@
+"""Command-line interface client for managing and monitoring the LucidTrend server."""
+
 import os
 import sys
 import argparse
@@ -10,12 +12,8 @@ load_dotenv()
 DEFAULT_SERVER = os.getenv("SERVER_URL", "http://localhost:8000")
 DEFAULT_KEY = os.getenv("API_SECRET_KEY", "lt_sec_9f82d1c3a7e54b60a12e847c5d9f3b1a")
 
-def check_server_connection(server_url: str, api_key: str):
-    """
-    Mandatory connection check:
-    Verifies that the server is alive and that the API key is authorized.
-    Terminates execution if connection cannot be established.
-    """
+def check_server_connection(server_url: str, api_key: str) -> dict:
+    """Verifies that the server is online and authenticates before running commands."""
     endpoint = f"{server_url.rstrip('/')}/api/v1/status"
     try:
         response = requests.get(
@@ -47,6 +45,7 @@ def check_server_connection(server_url: str, api_key: str):
         sys.exit(1)
 
 def handle_status(server_url: str, api_key: str, args):
+    """Fetches and displays live server health metrics and configuration status."""
     status_data = check_server_connection(server_url, api_key)
     print("\n" + "=" * 65)
     print(" LucidTrend Server Status: CONNECTED & ONLINE")
@@ -56,14 +55,14 @@ def handle_status(server_url: str, api_key: str, args):
     print("=" * 65 + "\n")
 
 def handle_pipeline(server_url: str, api_key: str, args):
-    # Mandatory connection check first
+    """Dispatches a modular pipeline execution request with optional module exclusion."""
     check_server_connection(server_url, api_key)
 
     with_db = True
     with_email = True
     with_image = True
 
-    # Parse --without flags
+    # Parse excluded modules from command line options
     if args.without:
         without_tokens = [t.strip().lower() for t in args.without.split(",") if t.strip()]
         if "db" in without_tokens or "database" in without_tokens:
@@ -73,10 +72,9 @@ def handle_pipeline(server_url: str, api_key: str, args):
         if "image" in without_tokens or "images" in without_tokens or "imagegeneration" in without_tokens:
             with_image = False
 
-    # Parse --with flags
+    # Parse explicitly included modules
     if args.with_flags:
         with_tokens = [t.strip().lower() for t in args.with_flags.split(",") if t.strip()]
-        # If --with is explicitly specified, enable matching ones
         if "db" in with_tokens or "database" in with_tokens:
             with_db = True
         if "email" in with_tokens or "newsletter" in with_tokens:
@@ -131,7 +129,7 @@ def handle_pipeline(server_url: str, api_key: str, args):
     print("=" * 65 + "\n")
 
 def handle_generate_image(server_url: str, api_key: str, args):
-    # Mandatory connection check first
+    """Requests on-demand image synthesis and writes the result to local storage."""
     check_server_connection(server_url, api_key)
 
     prompt = args.prompt
@@ -167,12 +165,10 @@ def handle_generate_image(server_url: str, api_key: str, args):
     filename = data.get("filename", "generated_image.png")
     download_url = data.get("download_url")
 
-    # Destination on current drive / directory where CLI was executed
     output_path = args.output if args.output else os.path.join(os.getcwd(), filename)
 
     print(f"[PROMPT USED BY MODEL]:\n  -> \"{prompt_used}\"\n")
 
-    # Download binary from server static temp endpoint or decode base64
     if download_url:
         img_resp = requests.get(f"{server_url.rstrip('/')}{download_url}", timeout=30)
         if img_resp.status_code == 200:
@@ -185,7 +181,6 @@ def handle_generate_image(server_url: str, api_key: str, args):
             print("=" * 65 + "\n")
             return
 
-    # Fallback to base64 if download_url failed
     if data.get("image_data_uri"):
         raw_b64 = data["image_data_uri"].split(",", 1)[1]
         import base64
@@ -194,6 +189,7 @@ def handle_generate_image(server_url: str, api_key: str, args):
         print(f"[SUCCESS] Image generated and saved to: {output_path}\n")
 
 def handle_cleanup_temp(server_url: str, api_key: str, args):
+    """Triggers an immediate cleanup of the server's temporary files."""
     check_server_connection(server_url, api_key)
     resp = requests.post(
         f"{server_url.rstrip('/')}/api/v1/cleanup/temp",
@@ -207,6 +203,7 @@ def handle_cleanup_temp(server_url: str, api_key: str, args):
         print(f"\n[ERROR] Cleanup failed: {resp.text}\n")
 
 def main():
+    """Parses CLI subcommands and dispatches execution to dedicated command handlers."""
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("--server", default=DEFAULT_SERVER, help=f"Server URL (default: {DEFAULT_SERVER})")
     parent_parser.add_argument("--key", default=DEFAULT_KEY, help="API Secret Key for server authentication")
@@ -228,22 +225,18 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Subcommand: status
     subparsers.add_parser("status", parents=[parent_parser], help="Check server health and connectivity")
 
-    # Subcommand: pipeline
     pipeline_parser = subparsers.add_parser("pipeline", parents=[parent_parser], help="Execute post generation with modular flags")
     pipeline_parser.add_argument("--without", help="Comma-separated modules to skip (e.g. email,db,image)")
     pipeline_parser.add_argument("--with", dest="with_flags", help="Comma-separated modules to force enable (e.g. db,image)")
     pipeline_parser.add_argument("--prompt", help="Custom research prompt")
 
-    # Subcommand: generate-image
     img_parser = subparsers.add_parser("generate-image", parents=[parent_parser], help="Generate an isolated image on-demand")
     img_parser.add_argument("--prompt", help="Text-to-image prompt for FLUX.1")
     img_parser.add_argument("--title", help="Article headline to automatically craft prompt from")
     img_parser.add_argument("--output", help="Custom output filepath on current machine")
 
-    # Subcommand: cleanup-temp
     subparsers.add_parser("cleanup-temp", parents=[parent_parser], help="Purge server temporary image folder")
 
     args = parser.parse_args()
