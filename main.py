@@ -143,14 +143,15 @@ def start_api_server():
     logging.info(f"[API Server] Management server running on http://{host}:{port}")
     uvicorn.run("api.server:app", host=host, port=port, log_level="warning")
 
+from service.scheduler.schedule_manager import register_pipeline_callback, apply_schedule
+
 def start_scheduler():
-    """Initializes and runs the continuous daily scheduler daemon."""
-    logging.info("[Scheduler] Autonomous daemon active. Scheduled daily at 05:00 and 17:00 Asia/Kathmandu.")
-    schedule.every().day.at("05:00").do(lambda: asyncio.run(run_daily_cycle()))
-    schedule.every().day.at("17:00").do(lambda: asyncio.run(run_daily_cycle()))
+    """Initializes and runs the continuous daily scheduler daemon with dynamic reshuffling support."""
+    register_pipeline_callback(run_daily_cycle)
+    apply_schedule()
 
     # Run automated temp cleanup every hour
-    schedule.every(1).hours.do(lambda: clean_temp_directory(max_age_seconds=3600))
+    schedule.every(1).hours.do(lambda: clean_temp_directory(max_age_seconds=3600)).tag("temp_cleaner")
     logging.info("[Scheduler] Automated 1-hour temporary folder cleanup job registered.")
 
     while True:

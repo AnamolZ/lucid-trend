@@ -10,7 +10,35 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DEFAULT_SERVER = os.getenv("SERVER_URL", "http://localhost:8000")
-DEFAULT_KEY = os.getenv("API_SECRET_KEY", "lt_sec_9f82d1c3a7e54b60a12e847c5d9f3b1a")
+
+def resolve_api_key(passed_key: str = None) -> str:
+    """Prompts the user interactively for the server API key if not supplied via command line."""
+    if passed_key and str(passed_key).strip():
+        return str(passed_key).strip()
+
+    # Check if input was piped in non-interactive environment
+    if not sys.stdin.isatty():
+        try:
+            line = sys.stdin.readline().strip()
+            if line:
+                return line
+        except Exception:
+            pass
+
+    try:
+        import getpass
+        entered = getpass.getpass("🔑 Enter Server API Key: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\n[ABORTED] Authentication cancelled.")
+        sys.exit(1)
+    except Exception:
+        entered = input("🔑 Enter Server API Key: ").strip()
+
+    if not entered:
+        print("\n[AUTHENTICATION ERROR] API key cannot be empty.\n")
+        sys.exit(1)
+
+    return entered
 
 def check_server_connection(server_url: str, api_key: str) -> dict:
     """Verifies that the server is online and authenticates before running commands."""
@@ -23,7 +51,7 @@ def check_server_connection(server_url: str, api_key: str) -> dict:
         )
         if response.status_code == 401:
             print(f"\n[AUTHENTICATION ERROR] Access Denied: Invalid API key provided.")
-            print("Ensure API_SECRET_KEY matches the server configuration.\n")
+            print("Please verify the key matches the server's API_SECRET_KEY configuration.\n")
             sys.exit(1)
         elif response.status_code != 200:
             print(f"\n[SERVER ERROR] Server returned HTTP {response.status_code}: {response.text}\n")
@@ -45,25 +73,27 @@ def check_server_connection(server_url: str, api_key: str) -> dict:
         sys.exit(1)
 
 def handle_status(server_url: str, api_key: str, args):
-    """Fetches and displays live server health metrics and configuration status."""
+    """Fetches and displays live server health metrics, configuration status, and active schedule."""
     status_data = check_server_connection(server_url, api_key)
     print("\n" + "=" * 65)
     print(" LucidTrend Server Status: CONNECTED & ONLINE")
     print("=" * 65)
     for k, v in status_data.items():
-        print(f"  {k:<30}: {v}")
+        if k == "scheduled_daily_runs" and isinstance(v, list):
+            print(f"  {k:<30}: {', '.join(v)} Asia/Kathmandu (12h gap)")
+        else:
+            print(f"  {k:<30}: {v}")
     print("=" * 65 + "\n")
 
 def handle_pipeline(server_url: str, api_key: str, args):
-    """Dispatches a modular pipeline execution request with optional module exclusion."""
+    """Dispatches a modular pipeline execution request with optional module exclusion and live schedule reshuffle."""
     check_server_connection(server_url, api_key)
 
     with_db = True
     with_email = True
     with_image = True
 
-    # Parse excluded modules from command line options
-    if args.without:
+    if hasattr(args, "without") and args.without:
         without_tokens = [t.strip().lower() for t in args.without.split(",") if t.strip()]
         if "db" in without_tokens or "database" in without_tokens:
             with_db = False
@@ -72,8 +102,7 @@ def handle_pipeline(server_url: str, api_key: str, args):
         if "image" in without_tokens or "images" in without_tokens or "imagegeneration" in without_tokens:
             with_image = False
 
-    # Parse explicitly included modules
-    if args.with_flags:
+    if hasattr(args, "with_flags") and args.with_flags:
         with_tokens = [t.strip().lower() for t in args.with_flags.split(",") if t.strip()]
         if "db" in with_tokens or "database" in with_tokens:
             with_db = True
@@ -121,11 +150,15 @@ def handle_pipeline(server_url: str, api_key: str, args):
         print(f"  -> \"{art.get('image_prompt')}\"")
         print("-" * 65 + "\n")
 
+    reshuffled = data.get("reshuffled_schedule")
+
     print("Execution Summary:")
     print(f"  - Articles Created  : {data.get('articles_count')}")
     print(f"  - MongoDB Inserted  : {data.get('database_inserted')}")
     print(f"  - Newsletter Sent   : {data.get('email_dispatched')}")
     print(f"  - Images Queued     : {data.get('images_queued')}")
+    if reshuffled and isinstance(reshuffled, list):
+        print(f"  - Schedule Reshuffle: Set to {reshuffled[0]} and {reshuffled[1]} Asia/Kathmandu (12h gap)")
     print("=" * 65 + "\n")
 
 def handle_generate_image(server_url: str, api_key: str, args):
@@ -165,7 +198,7 @@ def handle_generate_image(server_url: str, api_key: str, args):
     filename = data.get("filename", "generated_image.png")
     download_url = data.get("download_url")
 
-    output_path = args.output if args.output else os.path.join(os.getcwd(), filename)
+    output_path = args.output if hasattr(args, "output") and args.output else os.path.join(os.getcwd(), filename)
 
     print(f"[PROMPT USED BY MODEL]:\n  -> \"{prompt_used}\"\n")
 
@@ -188,6 +221,26 @@ def handle_generate_image(server_url: str, api_key: str, args):
             f.write(base64.b64decode(raw_b64))
         print(f"[SUCCESS] Image generated and saved to: {output_path}\n")
 
+def handle_reshuffle(server_url: str, api_key: str, args):
+    """Requests the server to dynamically reshuffle the daily 12-hour schedule."""
+    check_server_connection(server_url, api_key)
+    resp = requests.post(
+        f"{server_url.rstrip('/')}/api/v1/schedule/reshuffle",
+        headers={"X-API-Key": api_key},
+        timeout=10
+    )
+    if resp.status_code == 200:
+        data = resp.json()
+        runs = data.get("scheduled_daily_runs", [])
+        print("\n" + "=" * 65)
+        print(" [SUCCESS] Daily Schedule Reshuffled on Server")
+        print("=" * 65)
+        print(f"  New Daily Run Times : {', '.join(runs)} Asia/Kathmandu")
+        print(f"  Schedule Interval   : {data.get('schedule_interval', '12 hours (2 runs per day)')}")
+        print("=" * 65 + "\n")
+    else:
+        print(f"\n[ERROR] Reshuffle failed with code {resp.status_code}: {resp.text}\n")
+
 def handle_cleanup_temp(server_url: str, api_key: str, args):
     """Triggers an immediate cleanup of the server's temporary files."""
     check_server_connection(server_url, api_key)
@@ -204,45 +257,55 @@ def handle_cleanup_temp(server_url: str, api_key: str, args):
 
 def main():
     """Parses CLI subcommands and dispatches execution to dedicated command handlers."""
-    parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument("--server", default=DEFAULT_SERVER, help=f"Server URL (default: {DEFAULT_SERVER})")
-    parent_parser.add_argument("--key", default=DEFAULT_KEY, help="API Secret Key for server authentication")
-
     parser = argparse.ArgumentParser(
         description="LucidTrend Autonomous System - Interactive CLI & Server Client",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[parent_parser],
         epilog="""
 Examples:
   uv run cli.py status
   uv run cli.py pipeline --without email,db,image
   uv run cli.py pipeline --with db,image --without email
   uv run cli.py generate-image --prompt "Futuristic quantum neural network, 16:9"
-  uv run cli.py generate-image --title "AI Leading the Software Industry"
+  uv run cli.py reshuffle
   uv run cli.py cleanup-temp
         """
     )
+    parser.add_argument("--server", default=DEFAULT_SERVER, help=f"Server URL (default: {DEFAULT_SERVER})")
+    parser.add_argument("--key", default=None, help="API Secret Key (if omitted, prompted interactively)")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("status", parents=[parent_parser], help="Check server health and connectivity")
+    status_parser = subparsers.add_parser("status", help="Check server health, key status, and active schedule")
+    status_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    status_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
 
-    pipeline_parser = subparsers.add_parser("pipeline", parents=[parent_parser], help="Execute post generation with modular flags")
+    pipeline_parser = subparsers.add_parser("pipeline", help="Execute on-demand post generation and reshuffle daily schedule")
+    pipeline_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    pipeline_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
     pipeline_parser.add_argument("--without", help="Comma-separated modules to skip (e.g. email,db,image)")
     pipeline_parser.add_argument("--with", dest="with_flags", help="Comma-separated modules to force enable (e.g. db,image)")
     pipeline_parser.add_argument("--prompt", help="Custom research prompt")
 
-    img_parser = subparsers.add_parser("generate-image", parents=[parent_parser], help="Generate an isolated image on-demand")
+    img_parser = subparsers.add_parser("generate-image", help="Generate an isolated image on-demand")
+    img_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    img_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
     img_parser.add_argument("--prompt", help="Text-to-image prompt for FLUX.1")
     img_parser.add_argument("--title", help="Article headline to automatically craft prompt from")
     img_parser.add_argument("--output", help="Custom output filepath on current machine")
 
-    subparsers.add_parser("cleanup-temp", parents=[parent_parser], help="Purge server temporary image folder")
+    reshuffle_parser = subparsers.add_parser("reshuffle", help="Reshuffle the daily pipeline schedule (2 runs per day, 12h gap)")
+    reshuffle_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    reshuffle_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
+
+    cleanup_parser = subparsers.add_parser("cleanup-temp", help="Purge server temporary image folder")
+    cleanup_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    cleanup_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
 
     args = parser.parse_args()
 
-    server_url = args.server
-    api_key = args.key
+    server_url = getattr(args, "server", DEFAULT_SERVER)
+    raw_key = getattr(args, "key", None)
+    api_key = resolve_api_key(raw_key)
 
     if args.command == "status":
         handle_status(server_url, api_key, args)
@@ -250,6 +313,8 @@ Examples:
         handle_pipeline(server_url, api_key, args)
     elif args.command == "generate-image":
         handle_generate_image(server_url, api_key, args)
+    elif args.command == "reshuffle":
+        handle_reshuffle(server_url, api_key, args)
     elif args.command == "cleanup-temp":
         handle_cleanup_temp(server_url, api_key, args)
 

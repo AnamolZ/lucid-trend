@@ -8,7 +8,7 @@ import base64
 import asyncio
 import logging
 from typing import Optional, List
-from fastapi import FastAPI, Depends, HTTPException, Security, status
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ from service.mongodb.client import MongoDBService
 from service.mongodb.insert_posts import insert_posts
 from service.emails.notify_subscriber import notify_subscribers
 from service.cleanup.temp_cleaner import ensure_temp_dir, clean_temp_directory, TEMP_DIR
+from service.scheduler.schedule_manager import get_active_schedule, reshuffle_schedule
 from config.model_pool import get_active_model, get_active_key, coordinator
 from config.logging_config import setup_logging
 
@@ -34,16 +35,23 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 def verify_api_key(
+    request: Request,
     header_key: Optional[str] = Security(api_key_header),
     bearer_creds: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme)
 ) -> str:
-    """Validates incoming requests against the configured secret API key."""
+    """Validates incoming requests against the configured secret API key and logs security alerts."""
     token = header_key or (bearer_creds.credentials if bearer_creds else None)
+    client_ip = request.client.host if request.client else "unknown"
     if not token or token != API_SECRET_KEY:
+        masked = (token[:4] + "..." + token[-2:]) if token and len(token) > 6 else (token or "None")
+        logging.warning(
+            f"[Security Alert] Unauthorized access attempt from {client_ip} rejected! Invalid or missing API key (received: '{masked}')."
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized: Missing or invalid API key. Provide via 'X-API-Key' or 'Authorization: Bearer <key>'."
         )
+    logging.info(f"[Security] Client authenticated successfully from {client_ip}.")
     return token
 
 app = FastAPI(
@@ -83,6 +91,7 @@ async def get_system_status():
     hf_tokens = hf_coordinator.get_tokens()
 
     temp_files = os.listdir(TEMP_DIR) if os.path.exists(TEMP_DIR) else []
+    scheduled_runs = get_active_schedule()
 
     return {
         "status": "online",
@@ -92,6 +101,8 @@ async def get_system_status():
         "huggingface_keys_count": len(hf_tokens),
         "huggingface_active_key_index": hf_coordinator.key_index + 1,
         "temp_files_count": len(temp_files),
+        "scheduled_daily_runs": scheduled_runs,
+        "schedule_interval": "12 hours (2 runs per day)",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
@@ -110,7 +121,6 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
     logging.info(f"  -> \"{prompt}\"")
     logging.info("=" * 65)
 
-    # Offload blocking network calls and sleeps to worker thread to prevent freezing FastAPI
     data_uri = await asyncio.to_thread(
         huggingface_image,
         prompt=prompt,
@@ -148,7 +158,7 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
 
 @app.post("/api/v1/pipeline/run", dependencies=[Depends(verify_api_key)])
 async def run_pipeline_endpoint(req: PipelineRequest):
-    """Triggers intelligence scouting and publishing with granular module toggles and non-blocking I/O."""
+    """Triggers intelligence scouting and publishing with modular module toggles and non-blocking I/O."""
     logging.info("=" * 65)
     logging.info(
         f"[API Pipeline] Initiating run | DB: {req.with_db} | Email: {req.with_email} | Images: {req.with_image}"
@@ -178,15 +188,17 @@ async def run_pipeline_endpoint(req: PipelineRequest):
 
     inserted_docs = []
     if req.with_db:
-        # Offload DB write and pass with_image flag to respect user options
         inserted_docs = await asyncio.to_thread(insert_posts, articles, with_image=req.with_image)
         logging.info(f"[API Pipeline] Inserted {len(inserted_docs)} posts into MongoDB.")
 
     email_dispatched = False
     if req.with_email:
-        # Offload subscriber notifications to avoid blocking event loop
         email_dispatched = await asyncio.to_thread(notify_subscribers, articles)
         logging.info(f"[API Pipeline] Newsletter dispatched: {email_dispatched}")
+
+    # Reshuffle schedule on forced run to set new random daily times with exact 12-hour gap
+    time1, time2 = reshuffle_schedule()
+    logging.info(f"[API Pipeline] Dynamic schedule reshuffled to: {time1} and {time2} (12h gap).")
 
     return {
         "success": True,
@@ -203,7 +215,19 @@ async def run_pipeline_endpoint(req: PipelineRequest):
         ],
         "database_inserted": req.with_db,
         "email_dispatched": email_dispatched,
-        "images_queued": req.with_image
+        "images_queued": req.with_image,
+        "reshuffled_schedule": [time1, time2]
+    }
+
+@app.post("/api/v1/schedule/reshuffle", dependencies=[Depends(verify_api_key)])
+async def reshuffle_schedule_endpoint():
+    """Dynamically reshuffles the 2-run daily schedule to new random times with a 12-hour gap."""
+    time1, time2 = reshuffle_schedule()
+    return {
+        "success": True,
+        "message": "Daily pipeline schedule reshuffled successfully.",
+        "scheduled_daily_runs": [time1, time2],
+        "schedule_interval": "12 hours (2 runs per day)"
     }
 
 @app.post("/api/v1/cleanup/temp", dependencies=[Depends(verify_api_key)])
