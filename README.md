@@ -6,16 +6,27 @@ An intelligent platform that operates with multi-level workflows to scout develo
 
 ## System Overview
 
+### 1. Research and Publishing Pipeline
 ```mermaid
 flowchart LR
-    A[Scout & Research\nGemini + Google Search] --> B[Local Extraction\nZero-Token JSON]
-    B --> C[Immediate MongoDB Publish\nDefault Thumbnail]
+    A[Scout & Research\nGemini + Google Search] --> B[Data Extraction\nLocal JSON Parsing]
+    B --> C[Immediate Publish\nMongoDB Database]
     C --> D[Editorial Newsletter\nText-Only Delivery]
-    C -.-> E[Async Background Worker\nFLUX.1 Multi-Key Ladder]
-    E -.-> F[In-Place Image Update\nMongoDB Document]
-    
-    G[Developer / Operator\nCLI Client] <--> |Authenticated API :8000| H[FastAPI Server\nInteractive Management]
-    H -.-> B
+```
+
+### 2. Background Image Generation
+```mermaid
+flowchart LR
+    A[Published Article\nDefault Thumbnail] --> B[Background Worker\nFLUX.1 4-Key Ladder]
+    B --> C[In-Place Update\nMongoDB Image]
+```
+
+### 3. Interactive Management and CLI
+```mermaid
+flowchart LR
+    A[Operator / Developer\nCLI Terminal] <-->|Authenticated API| B[FastAPI Management Server\nPort 8000]
+    B --> C[Modular Pipeline Runs\n--with / --without flags]
+    B --> D[On-Demand Image Gen\nFLUX.1 Visual Assets]
 ```
 
 ---
