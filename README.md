@@ -41,7 +41,5 @@ For in-depth explanations, configuration guides, and architectural diagrams, ref
 ---
 
 <div align="center">
-  <sub>Designed and developed by <a href="https://www.anamoldhakal.com.np/"><strong>Anamol Dhakal</strong></a></sub>
-  <br>
-  <sub>Powered by Python, Google ADK, Gemini, Celery, Redis, MongoDB, and FLUX.1</sub>
+  <sub>Developed by <a href="https://www.anamoldhakal.com.np/"><strong>Anamol Dhakal</strong></a></sub>
 </div>
