@@ -39,7 +39,7 @@ celery_app.conf.update(
 AUTHOR = {
     "name": "Anamol Dhakal",
     "role": "Backend System Developer",
-    "avatar": "https://www.anamoldhakal.com.np/blog/assets/avatar-anamol-D1sVnQlG.jpg"
+    "avatar": "https://www.anamoldhakal.com.np/images/about-2.jpg"
 }
 DEFAULT_IMAGE = "https://api.imghippo.com/files/dRXB7409pm.png"
 
