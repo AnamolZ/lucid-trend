@@ -5,6 +5,7 @@ services:
 
   app:
     build: .
+    image: err0rz/lucid-trend:latest
     restart: always
     ports:
       - "8000:8000"
@@ -22,6 +23,7 @@ services:
 
   worker:
     build: .
+    image: err0rz/lucid-trend:latest
     command: celery -A service.tasks.tasks worker --loglevel=info --concurrency=4
     restart: always
     environment:
