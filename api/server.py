@@ -4,6 +4,7 @@ import os
 import re
 import time
 import uuid
+import secrets
 import base64
 import asyncio
 import logging
@@ -29,6 +30,23 @@ load_dotenv()
 setup_logging()
 
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "lt_sec_default_key_2026")
+MASTER_PASSWORD = os.getenv("MASTER_PASSWORD", "lucidtrend1379")
+
+def update_env_api_key(new_key: str):
+    """Safely updates or inserts API_SECRET_KEY in the .env file on disk."""
+    env_path = os.path.join(os.getcwd(), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if re.search(r"^API_SECRET_KEY=.*", content, flags=re.MULTILINE):
+                content = re.sub(r"^API_SECRET_KEY=.*", f"API_SECRET_KEY={new_key}", content, flags=re.MULTILINE)
+            else:
+                content += f"\nAPI_SECRET_KEY={new_key}\n"
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            logging.error(f"[Security] Failed to write updated API key to .env: {e}")
 
 # Support both X-API-Key header and Bearer token authentication
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -82,6 +100,10 @@ class ImageGenerationRequest(BaseModel):
 class EmailTestRequest(BaseModel):
     """Payload for subscriber email test dispatches."""
     to_email: Optional[str] = Field(default=None, description="Optional recipient email address")
+
+class RotateKeyRequest(BaseModel):
+    """Payload for rotating the system API key via master password."""
+    master_password: str = Field(..., description="Master administration password")
 
 @app.get("/api/v1/status", dependencies=[Depends(verify_api_key)])
 async def get_system_status():
@@ -235,3 +257,32 @@ async def cleanup_temp_endpoint():
     """Forces an immediate sweep and purge of files in the temp directory."""
     deleted = await asyncio.to_thread(clean_temp_directory, max_age_seconds=0)
     return {"success": True, "files_purged": deleted}
+
+@app.post("/api/v1/auth/rotate-key")
+async def rotate_key_endpoint(req: RotateKeyRequest, request: Request):
+    """Regenerates the system API secret key authenticated by master password, immediately revoking the old key."""
+    global API_SECRET_KEY
+    client_ip = request.client.host if request.client else "unknown"
+
+    if req.master_password != MASTER_PASSWORD:
+        logging.warning(
+            f"[Security Alert] Unauthorized API key rotation attempt from {client_ip} rejected! Invalid master password."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Invalid master password."
+        )
+
+    new_key = f"lt_sec_{secrets.token_hex(16)}"
+    API_SECRET_KEY = new_key
+    os.environ["API_SECRET_KEY"] = new_key
+    update_env_api_key(new_key)
+
+    logging.info(
+        f"[Security] API secret key regenerated and rotated successfully from {client_ip}. Old key revoked immediately."
+    )
+    return {
+        "success": True,
+        "new_api_key": new_key,
+        "message": "API key successfully rotated and old key invalidated."
+    }

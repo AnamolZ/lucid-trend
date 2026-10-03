@@ -2,6 +2,7 @@
 
 import os
 import sys
+import re
 import argparse
 import requests
 import json
@@ -255,6 +256,83 @@ def handle_cleanup_temp(server_url: str, api_key: str, args):
     else:
         print(f"\n[ERROR] Cleanup failed: {resp.text}\n")
 
+def handle_rotate_key(server_url: str, args):
+    """Regenerates a new server API key using master password authentication."""
+    master_pwd = getattr(args, "master_password", None)
+    if not master_pwd:
+        if sys.stdin.isatty():
+            try:
+                import getpass
+                master_pwd = getpass.getpass("🔑 Enter Master Password: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n[ABORTED] Key rotation cancelled.")
+                sys.exit(1)
+        else:
+            line = sys.stdin.readline()
+            master_pwd = line.strip() if line else ""
+
+    if not master_pwd:
+        print("\n[ERROR] Master password cannot be empty.\n")
+        sys.exit(1)
+
+    try:
+        resp = requests.post(
+            f"{server_url.rstrip('/')}/api/v1/auth/rotate-key",
+            json={"master_password": master_pwd},
+            timeout=10
+        )
+    except requests.exceptions.ConnectionError:
+        print("\n" + "=" * 65)
+        print(" [CONNECTION FAILED] Server is not reachable")
+        print("=" * 65)
+        print(f" Target Endpoint: {server_url}")
+        print("\n Key rotation requires an active LucidTrend server.")
+        print(" Please ensure the server is running (natively or in Docker):")
+        print("   - Native:  uv run python main.py")
+        print("   - Docker:  docker-compose up -d")
+        print("=" * 65 + "\n")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n[ERROR] Unexpected error connecting to server: {e}\n")
+        sys.exit(1)
+
+    if resp.status_code == 200:
+        data = resp.json()
+        new_key = data.get("new_api_key")
+
+        # Update local .env file if present
+        local_env = os.path.join(os.getcwd(), ".env")
+        if os.path.exists(local_env):
+            try:
+                with open(local_env, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if re.search(r"^API_SECRET_KEY=.*", content, flags=re.MULTILINE):
+                    content = re.sub(r"^API_SECRET_KEY=.*", f"API_SECRET_KEY={new_key}", content, flags=re.MULTILINE)
+                else:
+                    content += f"\nAPI_SECRET_KEY={new_key}\n"
+                with open(local_env, "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception:
+                pass
+
+        print("\n" + "=" * 65)
+        print(" [SUCCESS] Server API Key Regenerated & Rotated")
+        print("=" * 65)
+        print("  Old Key Status : Inactivated & Revoked Immediately")
+        print(f"  New API Key    : {new_key}")
+        print("=" * 65)
+        print("  Notice:")
+        print("  - The previous API key has been revoked and will no longer work.")
+        print("  - The new API key is active on the server and saved to .env.")
+        print("  - Use this new API key for all subsequent CLI commands.\n")
+    elif resp.status_code == 403:
+        print("\n[AUTHENTICATION ERROR] Access Denied: Invalid master password.")
+        print("Key rotation rejected by the server.\n")
+        sys.exit(1)
+    else:
+        print(f"\n[ERROR] Key rotation failed ({resp.status_code}): {resp.text}\n")
+        sys.exit(1)
+
 def main():
     """Parses CLI subcommands and dispatches execution to dedicated command handlers."""
     parser = argparse.ArgumentParser(
@@ -267,6 +345,7 @@ Examples:
   uv run cli.py pipeline --with db,image --without email
   uv run cli.py generate-image --prompt "Futuristic quantum neural network, 16:9"
   uv run cli.py reshuffle
+  uv run cli.py rotate-key
   uv run cli.py cleanup-temp
         """
     )
@@ -297,6 +376,14 @@ Examples:
     reshuffle_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
     reshuffle_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
 
+    rotate_parser = subparsers.add_parser("rotate-key", help="Regenerate new API key via master password (invalidates old key)")
+    rotate_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    rotate_parser.add_argument("--master-password", help="Master password for key rotation")
+
+    regen_parser = subparsers.add_parser("regenerate-key", help="Alias for rotate-key")
+    regen_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    regen_parser.add_argument("--master-password", help="Master password for key rotation")
+
     cleanup_parser = subparsers.add_parser("cleanup-temp", help="Purge server temporary image folder")
     cleanup_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
     cleanup_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
@@ -304,6 +391,11 @@ Examples:
     args = parser.parse_args()
 
     server_url = getattr(args, "server", DEFAULT_SERVER)
+
+    if args.command in ["rotate-key", "regenerate-key"]:
+        handle_rotate_key(server_url, args)
+        return
+
     raw_key = getattr(args, "key", None)
     api_key = resolve_api_key(raw_key)
 
