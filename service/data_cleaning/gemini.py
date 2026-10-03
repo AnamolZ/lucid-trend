@@ -6,6 +6,12 @@ import re
 import logging
 from difflib import SequenceMatcher
 
+def _clean_json_syntax(text: str) -> str:
+    """Removes trailing commas and normalizes JSON text prior to parsing."""
+    # Strip trailing commas before closing braces/brackets
+    cleaned = re.sub(r",\s*([\]}])", r"\1", text)
+    return cleaned
+
 def fast_extract(raw: str, model=None) -> list:
     """Parses structured JSON articles locally without token consumption, falling back to LLM if needed."""
     if not raw or not isinstance(raw, str):
@@ -13,7 +19,7 @@ def fast_extract(raw: str, model=None) -> list:
 
     text = raw.strip()
 
-    # Attempt direct JSON parsing
+    # 1. Attempt direct JSON parsing
     try:
         data = json.loads(text)
         if isinstance(data, list) and len(data) > 0:
@@ -21,35 +27,68 @@ def fast_extract(raw: str, model=None) -> list:
     except Exception:
         pass
 
-    # Extract JSON content enclosed within markdown code fences
+    # 2. Attempt parsing after sanitizing trailing commas
+    try:
+        data = json.loads(_clean_json_syntax(text))
+        if isinstance(data, list) and len(data) > 0:
+            return data
+    except Exception:
+        pass
+
+    # 3. Extract JSON content enclosed within markdown code fences
     fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
     if fence_match:
+        fence_content = fence_match.group(1).strip()
         try:
-            data = json.loads(fence_match.group(1))
+            data = json.loads(fence_content)
             if isinstance(data, list) and len(data) > 0:
                 return data
         except Exception:
-            pass
+            try:
+                data = json.loads(_clean_json_syntax(fence_content))
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+            except Exception:
+                pass
 
-    # Extract bracketed array payload via regex
+    # 4. Extract bracketed array payload via balanced bracket or regex
     array_match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
     if array_match:
+        array_content = array_match.group(0).strip()
         try:
-            data = json.loads(array_match.group(0))
+            data = json.loads(array_content)
             if isinstance(data, list) and len(data) > 0:
                 return data
         except Exception:
-            pass
+            try:
+                data = json.loads(_clean_json_syntax(array_content))
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+            except Exception:
+                pass
 
-    # Trigger fallback LLM extraction only when all deterministic parsers fail
-    if model:
-        logging.info("[Extraction] Local parser encountered non-JSON output; invoking fallback LLM extractor.")
-        return extract_with_llm(raw, model)
+    # 5. Fallback to Gemini extraction if local parsing cannot parse malformed text
+    logging.info("[Extraction] Local parser encountered malformed output; invoking fallback LLM extractor.")
+    return extract_with_llm(raw, model)
 
-    return []
+def extract_with_llm(raw: str, model=None) -> list:
+    """Fallback LLM extractor for malformed agent outputs, self-initializing Gemini if model is None."""
+    if model is None:
+        try:
+            import google.generativeai as genai
+            from config.model_pool import get_active_model, get_active_key
+            active_model = get_active_model()
+            active_key = get_active_key()
+            if active_key:
+                genai.configure(api_key=active_key)
+                model = genai.GenerativeModel(active_model)
+        except Exception as init_err:
+            logging.error(f"[Extraction] Failed to auto-initialize fallback Gemini model: {init_err}")
+            return []
 
-def extract_with_llm(raw: str, model) -> list:
-    """Fallback LLM extractor for malformed agent outputs."""
+    if not model:
+        return []
+
     prompt = f"""
         Extract news/article data from the raw text into a valid JSON array:
         [
@@ -68,28 +107,33 @@ def extract_with_llm(raw: str, model) -> list:
     """
     try:
         response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-        return json.loads(response.text)
+        parsed = json.loads(response.text)
+        return parsed if isinstance(parsed, list) else []
     except Exception as e:
         logging.error(f"[Extraction] Fallback LLM extraction failed: {e}")
         return []
 
 def local_detect_duplicates(posts: list, model=None, similarity_threshold: float = 0.75) -> list:
-    """Detects duplicate articles locally using identifier matching and title similarity ratios."""
+    """Detects duplicate articles locally, returning duplicate ids while safely preserving original records."""
     if not posts or len(posts) < 2:
         return []
 
-    duplicates = set()
+    duplicate_ids = []
     seen = []
 
     for post in posts:
         post_id = post.get("id")
+        mongo_id = post.get("_id")
         title = post.get("title", "").strip().lower()
 
         if not post_id or not title:
             continue
 
         is_dup = False
-        for seen_id, seen_title in seen:
+        for seen_doc in seen:
+            seen_id = seen_doc.get("id")
+            seen_title = seen_doc.get("title")
+
             if post_id == seen_id:
                 is_dup = True
                 break
@@ -97,15 +141,18 @@ def local_detect_duplicates(posts: list, model=None, similarity_threshold: float
             ratio = SequenceMatcher(None, title, seen_title).ratio()
             if ratio >= similarity_threshold:
                 is_dup = True
-                logging.info(f"[Deduplication] Duplicate detected locally: '{post.get('title')}' is {ratio:.0%} similar to existing post.")
+                logging.info(
+                    f"[Deduplication] Duplicate detected locally: '{post.get('title')}' is {ratio:.0%} similar to existing post."
+                )
                 break
 
         if is_dup:
-            duplicates.add(post_id)
+            # Mark the duplicate record for removal (preserving the first encountered record)
+            duplicate_ids.append(mongo_id if mongo_id else post_id)
         else:
-            seen.append((post_id, title))
+            seen.append({"id": post_id, "title": title, "_id": mongo_id})
 
-    return list(duplicates)
+    return duplicate_ids
 
 def detect_duplicates(posts: list, model=None) -> list:
     """Entrypoint for article duplicate detection."""

@@ -7,12 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODEL_POOL = [
-    "gemini-3.7-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
     "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
     "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-2.5-pro",
+    "gemini-pro-latest",
 ]
 
 class KeyModelCoordinator:
@@ -77,14 +78,23 @@ class KeyModelCoordinator:
         current_model = failed_model or self.get_active_model()
         err_text = str(error_code).upper()
 
-        # Blacklist key permanently for this session on authentication or project permission failures
-        if any(term in err_text for term in ["403", "400", "404", "PERMISSION_DENIED"]):
+        # Blacklist key permanently for this session only on true authentication or permission rejections
+        if any(term in err_text for term in ["401", "403", "PERMISSION_DENIED", "API_KEY_INVALID"]):
             if current_key:
                 masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
                 logging.warning(
-                    f"[Security/Key Alert] Key ({masked}) received permanent error ({error_code}). Blacklisting for this session."
+                    f"[Security/Key Alert] Key ({masked}) received permanent auth error ({error_code}). Blacklisting for this session."
                 )
                 self.bad_keys.add(current_key)
+
+        # Handle 404 model not found by immediately cascading model tier without blacklisting key
+        if "404" in err_text:
+            prev_model = self.get_active_model()
+            self.model_index = (self.model_index + 1) % len(self.models)
+            new_model = self.get_active_model()
+            logging.info(f"[Model Cascading] Model '{prev_model}' unavailable (404). Cascaded to tier '{new_model}'.")
+            self._sync_environment()
+            return self.get_active_model(), self.get_active_key()
 
         keys = self.valid_keys
         total_keys = len(keys)

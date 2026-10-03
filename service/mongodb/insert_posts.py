@@ -20,8 +20,8 @@ def _dispatch_image_task_fallback(post_id: str, prompt: str, title: str):
     except Exception as e:
         logging.warning(f"[ImageFallbackThread] Background generation error for '{post_id}': {e}")
 
-def insert_posts(data_or_path, model=None) -> list:
-    """Inserts articles into MongoDB immediately with default images, delegating visual generation to background tasks."""
+def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
+    """Inserts articles into MongoDB immediately with default images, conditionally delegating visual generation."""
     if isinstance(data_or_path, list):
         data = data_or_path
     elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
@@ -50,27 +50,30 @@ def insert_posts(data_or_path, model=None) -> list:
     inserted_ids = mongo_service.insert_documents(prepared_documents)
     logging.info(f"[InsertPosts] Published {len(prepared_documents)} articles to MongoDB with placeholder images.")
 
-    # Dispatch asynchronous image synthesis tasks without blocking the caller
-    for item in prepared_documents:
-        post_id = item.get("id")
-        image_prompt = item.get("image_prompt")
-        title = item.get("title")
+    # Dispatch asynchronous image synthesis tasks only if with_image is enabled
+    if with_image:
+        for item in prepared_documents:
+            post_id = item.get("id")
+            image_prompt = item.get("image_prompt")
+            title = item.get("title")
 
-        if not post_id:
-            continue
+            if not post_id:
+                continue
 
-        try:
-            generate_and_update_image_task.delay(post_id, image_prompt, title)
-            logging.info(f"[InsertPosts] Queued background image task for post '{post_id}' via Celery.")
-        except Exception as celery_err:
-            logging.warning(
-                f"[InsertPosts] Celery broker offline ({celery_err}). Spawning background thread fallback..."
-            )
-            thread = threading.Thread(
-                target=_dispatch_image_task_fallback,
-                args=(post_id, image_prompt, title),
-                daemon=True
-            )
-            thread.start()
+            try:
+                generate_and_update_image_task.delay(post_id, image_prompt, title)
+                logging.info(f"[InsertPosts] Queued background image task for post '{post_id}' via Celery.")
+            except Exception as celery_err:
+                logging.warning(
+                    f"[InsertPosts] Celery broker offline ({celery_err}). Spawning background thread fallback..."
+                )
+                thread = threading.Thread(
+                    target=_dispatch_image_task_fallback,
+                    args=(post_id, image_prompt, title),
+                    daemon=True
+                )
+                thread.start()
+    else:
+        logging.info("[InsertPosts] Image synthesis skipped (--without image flag active).")
 
     return prepared_documents

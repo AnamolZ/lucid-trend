@@ -85,20 +85,24 @@ class RootAgentConfig:
           * Use `## What Changed & Technical Architecture` to explain the internal mechanisms.
           * Use `## Performance & Benchmarks` or `## Developer Experience & Migration` to give actionable takeaways.
           * Conclude with a `## Final Takeaway` section summarizing industry impact.
-          * Target 400+ words per article with clean bolding and bullet points where helpful.
+          * Target 400+ words per article with clean bolding, links to sources, and bullet points where helpful.
 
         REQUIRED JSON OUTPUT SCHEMA:
         Return ONLY a raw JSON array matching this exact schema:
         [
           {
             "id": "kebab-case-seo-slug-max-6-words",
-            "category": ["Breaking News", "Cloud & Infrastructure | Developer Central | AI & ML | Tech Strategy | Cybersecurity"],
+            "category": ["Breaking News", "AI & ML"],
             "title": "Compelling, Professional, High-CTR Headline",
             "description": "A crisp, engaging 2-3 sentence teaser that hooks the reader.",
             "content": "Full markdown-formatted technical article (400+ words) with ## subheadings.",
-            "image_prompt": "A vivid, cinematic 1-paragraph prompt for text-to-image generator describing visual subjects, futuristic lighting, high-tech ambiance, 16:9 aspect ratio."
+            "image_prompt": "A vivid, cinematic 1-paragraph prompt for text-to-image generator describing visual subjects, high quality lighting, clean 16:9 composition."
           }
         ]
+
+        CATEGORY INSTRUCTION:
+        For the `category` array, provide exactly two elements: ["Breaking News", "<DOMAIN>"] where <DOMAIN> is chosen from:
+        "AI & ML", "Cloud & Infrastructure", "Developer Central", "Tech Strategy", "Cybersecurity", "Programming & Frameworks".
 
         CRITICAL: OUTPUT ONLY THE RAW VALID JSON ARRAY. NO MARKDOWN CODE FENCES (```json), NO PREAMBLE, NO EXPLANATIONS.
     """

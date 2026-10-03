@@ -5,6 +5,7 @@ import re
 import time
 import uuid
 import base64
+import asyncio
 import logging
 from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, Security, status
@@ -96,10 +97,10 @@ async def get_system_status():
 
 @app.post("/api/v1/image/generate", dependencies=[Depends(verify_api_key)])
 async def generate_image_endpoint(req: ImageGenerationRequest):
-    """Generates an image via FLUX.1, saves it to temp storage, and returns base64 and download URL."""
+    """Generates an image via FLUX.1 without blocking the asyncio loop, returning download URL and base64."""
     prompt = req.prompt
     if not prompt and req.title:
-        prompt = f"Cinematic digital illustration of {req.title}, futuristic, high tech aesthetic, clean 16:9 composition"
+        prompt = f"Cinematic digital illustration of {req.title}, futuristic, clean 16:9 composition"
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Either 'prompt' or 'title' must be provided.")
@@ -109,7 +110,14 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
     logging.info(f"  -> \"{prompt}\"")
     logging.info("=" * 65)
 
-    data_uri = huggingface_image(prompt=prompt, max_rounds=3, wait_seconds=300)
+    # Offload blocking network calls and sleeps to worker thread to prevent freezing FastAPI
+    data_uri = await asyncio.to_thread(
+        huggingface_image,
+        prompt=prompt,
+        max_rounds=3,
+        wait_seconds=300
+    )
+
     if not data_uri:
         raise HTTPException(
             status_code=500,
@@ -121,8 +129,10 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
 
     base64_data = data_uri.split(",", 1)[1] if "," in data_uri else data_uri
     image_bytes = base64.b64decode(base64_data)
-    with open(temp_file_path, "wb") as f:
-        f.write(image_bytes)
+
+    await asyncio.to_thread(
+        lambda: open(temp_file_path, "wb").write(image_bytes)
+    )
 
     logging.info(f"[API ImageGeneration] Saved temporary image to '{temp_file_path}' ({len(image_bytes):,} bytes).")
 
@@ -138,7 +148,7 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
 
 @app.post("/api/v1/pipeline/run", dependencies=[Depends(verify_api_key)])
 async def run_pipeline_endpoint(req: PipelineRequest):
-    """Triggers the full intelligence scouting and publishing cycle with modular module toggles."""
+    """Triggers intelligence scouting and publishing with granular module toggles and non-blocking I/O."""
     logging.info("=" * 65)
     logging.info(
         f"[API Pipeline] Initiating run | DB: {req.with_db} | Email: {req.with_email} | Images: {req.with_image}"
@@ -168,12 +178,14 @@ async def run_pipeline_endpoint(req: PipelineRequest):
 
     inserted_docs = []
     if req.with_db:
-        inserted_docs = insert_posts(articles)
+        # Offload DB write and pass with_image flag to respect user options
+        inserted_docs = await asyncio.to_thread(insert_posts, articles, with_image=req.with_image)
         logging.info(f"[API Pipeline] Inserted {len(inserted_docs)} posts into MongoDB.")
 
     email_dispatched = False
     if req.with_email:
-        email_dispatched = notify_subscribers(articles)
+        # Offload subscriber notifications to avoid blocking event loop
+        email_dispatched = await asyncio.to_thread(notify_subscribers, articles)
         logging.info(f"[API Pipeline] Newsletter dispatched: {email_dispatched}")
 
     return {
@@ -197,5 +209,5 @@ async def run_pipeline_endpoint(req: PipelineRequest):
 @app.post("/api/v1/cleanup/temp", dependencies=[Depends(verify_api_key)])
 async def cleanup_temp_endpoint():
     """Forces an immediate sweep and purge of files in the temp directory."""
-    deleted = clean_temp_directory(max_age_seconds=0)
+    deleted = await asyncio.to_thread(clean_temp_directory, max_age_seconds=0)
     return {"success": True, "files_purged": deleted}
