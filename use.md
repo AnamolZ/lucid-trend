@@ -1,5 +1,7 @@
 # LucidTrend Operations, CLI & API Reference Guide
 
+> **Note**: This file is mirrored at [docs/use.md](docs/use.md).
+
 Comprehensive user guide for the **LucidTrend Autonomous Tech Intelligence Engine**. This document provides detailed, step-by-step instructions for operating the system, using all CLI subcommands, interacting with all REST API endpoints via cURL and Postman, managing security credentials, and container operations.
 
 ---
