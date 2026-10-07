@@ -146,8 +146,9 @@ async def generate_image_endpoint(req: ImageGenerationRequest):
     data_uri = await asyncio.to_thread(
         huggingface_image,
         prompt=prompt,
-        max_rounds=3,
-        wait_seconds=300
+        title=req.title,
+        max_rounds=1,
+        wait_seconds=0
     )
 
     if not data_uri:

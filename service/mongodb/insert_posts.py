@@ -7,12 +7,19 @@ import threading
 from service.tasks.tasks import generate_and_update_image_task, AUTHOR, DEFAULT_IMAGE
 from service.mongodb.client import MongoDBService
 
-def _dispatch_image_task_fallback(post_id: str, prompt: str, title: str):
+def _dispatch_image_task_fallback(post_id: str, prompt: str, title: str, description: str = None, category: list = None):
     """Executes image generation in a background thread when Celery broker is unavailable."""
     from service.image_helper.get_image import huggingface_image
     logging.info(f"[ImageFallbackThread] Background image generation started for '{post_id}'...")
     try:
-        image_url = huggingface_image(prompt=prompt, max_rounds=3, wait_seconds=300)
+        image_url = huggingface_image(
+            prompt=prompt,
+            title=title,
+            description=description,
+            category=category,
+            max_rounds=1,
+            wait_seconds=0
+        )
         if image_url:
             mongo = MongoDBService()
             mongo.update_post_image(post_id, image_url)
@@ -60,8 +67,11 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
             if not post_id:
                 continue
 
+            description = item.get("description")
+            category = item.get("category")
+
             try:
-                generate_and_update_image_task.delay(post_id, image_prompt, title)
+                generate_and_update_image_task.delay(post_id, image_prompt, title, description, category)
                 logging.info(f"[InsertPosts] Queued background image task for post '{post_id}' via Celery.")
             except Exception as celery_err:
                 logging.warning(
@@ -69,7 +79,7 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
                 )
                 thread = threading.Thread(
                     target=_dispatch_image_task_fallback,
-                    args=(post_id, image_prompt, title),
+                    args=(post_id, image_prompt, title, description, category),
                     daemon=True
                 )
                 thread.start()

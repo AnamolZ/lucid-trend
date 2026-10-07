@@ -1,14 +1,45 @@
-"""Root agent coordinator orchestrating subagents into a unified editorial pipeline."""
+"""Root agent coordinator orchestrating real-time discovery and editorial synthesis into a unified pipeline."""
 
-from google.adk.tools import AgentTool
+import logging
+import asyncio
 from config.config import RootAgentConfig
 from engine.agent_engine import AgentEngine
-from engine.dsearch_engine import DeepSearchEngine
-from engine.news_engine import NewsEngine
+from engine.web_scout import fetch_recent_tech_intel, format_intel_dossier
 from config.model_pool import get_active_model
 
+logger = logging.getLogger(__name__)
+
+class RootAgentPipeline:
+    """Orchestrates 2-Stage Grounded Discovery and Editorial Synthesis with zero rate-limit waste."""
+
+    def __init__(self, root_engine: AgentEngine):
+        self.root_engine = root_engine
+
+    def __getattr__(self, name):
+        """Proxies any standard AgentEngine properties to the underlying engine."""
+        return getattr(self.root_engine, name)
+
+    async def agent_response(self, ask: str) -> str:
+        """Executes the 2-Stage Grounded Research & Synthesis Pipeline."""
+        logger.info("[RootPipeline] Step 1/2: Scouting verified 24-hour tech breakthroughs...")
+        raw_intel = await asyncio.to_thread(fetch_recent_tech_intel, max_items=12)
+        dossier = format_intel_dossier(raw_intel)
+        logger.info(f"[RootPipeline] Step 1/2 Complete: {len(raw_intel)} verified developments scouted.")
+
+        logger.info("[RootPipeline] Step 2/2: Synthesizing publication-ready articles via Editor-in-Chief...")
+        grounded_prompt = (
+            f"{dossier}\n\n"
+            f"EDITORIAL DIRECTIVE:\n"
+            f"{ask}\n\n"
+            f"Select the top 2 genuine breakthrough developments from the verified intelligence above "
+            f"and synthesize publication-ready articles strictly matching the required JSON schema."
+        )
+
+        reply = await self.root_engine.agent_response(grounded_prompt)
+        return reply
+
 class RootAgentEngine:
-    """Coordinates news discovery and investigation subagents under an Editor-in-Chief persona."""
+    """Coordinates real-time 24h discovery and editorial synthesis under an Editor-in-Chief persona."""
 
     def __init__(self):
         self.config = RootAgentConfig()
@@ -18,33 +49,16 @@ class RootAgentEngine:
         self.output_key = self.config.output_key
         self.root_engine = None
 
-    def _build_tools(self, model_name: str = None) -> list:
-        research_agent = DeepSearchEngine()
-        news_agent = NewsEngine()
-        return [
-            AgentTool(research_agent.dsearch_agent(model_name=model_name)),
-            AgentTool(news_agent.news_agent(model_name=model_name))
-        ]
-
-    def _on_failover(self, new_model: str, new_key: str):
-        """Reconstructs subagents and coordinator runner when model cascading occurs."""
-        tools = self._build_tools(model_name=new_model)
-        self.root_engine.tools = tools
-        self.root_engine.agent_creation(model_name=new_model)
-        self.root_engine.agent_runner()
-
-    def root_agent(self) -> AgentEngine:
-        """Assembles and initializes the complete root agent engine."""
+    def root_agent(self) -> RootAgentPipeline:
+        """Assembles and initializes the complete 2-stage intelligence pipeline."""
         active_model = get_active_model()
-        tools = self._build_tools(model_name=active_model)
         self.root_engine = AgentEngine(
             self.agent_name, 
             self.description, 
             self.instruction, 
-            tools, 
-            self.output_key,
-            on_failover=self._on_failover
+            [], 
+            self.output_key
         )
         self.root_engine.agent_creation(model_name=active_model)
         self.root_engine.agent_runner()
-        return self.root_engine
+        return RootAgentPipeline(self.root_engine)

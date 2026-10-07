@@ -72,7 +72,8 @@ class AgentEngine:
                 active_key_num = coordinator.key_index + 1
                 logging.info(f"[{self.agent_name}] Processing query on '{self.model_name}' (Key #{active_key_num})...")
 
-                events = await self.runner.run_debug(ask, quiet=True)
+                # Enforce a 45-second execution ceiling to prevent stalled external connections
+                events = await asyncio.wait_for(self.runner.run_debug(ask, quiet=True), timeout=45.0)
                 response = ""
 
                 for event in events:
@@ -94,13 +95,32 @@ class AgentEngine:
 
                 await asyncio.sleep(1)
 
+            except asyncio.TimeoutError:
+                logging.warning(
+                    f"[{self.agent_name}] Execution timed out after 45s on '{self.model_name}'. Initiating immediate failover..."
+                )
+                new_model, new_key = report_failure(self.model_name, self.api_key, error_code="Timeout (45s)")
+                self.model_name = new_model
+                self.api_key = new_key
+
+                if self.on_failover:
+                    self.on_failover(new_model, new_key)
+                else:
+                    self.agent_creation(model_name=new_model)
+                    self.agent_runner()
+
+                await asyncio.sleep(1)
+                continue
+
             except Exception as e:
                 err_str = str(e)
 
                 # Identify error classifications to trigger appropriate failover
-                if any(code in err_str for code in ["429", "ResourceExhausted", "503", "500", "404", "403", "400", "PERMISSION_DENIED"]):
+                if any(code in err_str for code in ["429", "ResourceExhausted", "503", "500", "404", "403", "401", "400", "PERMISSION_DENIED", "UNAUTHENTICATED", "API_KEY_INVALID"]):
                     if "429" in err_str or "ResourceExhausted" in err_str:
                         reason = "429 Rate Limit"
+                    elif "401" in err_str or "UNAUTHENTICATED" in err_str or "API_KEY_INVALID" in err_str:
+                        reason = "401 Unauthorized"
                     elif "403" in err_str or "PERMISSION_DENIED" in err_str:
                         reason = "403 Forbidden"
                     elif "503" in err_str:

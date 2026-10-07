@@ -44,34 +44,31 @@ AUTHOR = {
 DEFAULT_IMAGE = "https://api.imghippo.com/files/dRXB7409pm.png"
 
 @celery_app.task(bind=True, max_retries=3)
-def generate_and_update_image_task(self, post_id: str, image_prompt: str, title: str) -> bool:
-    """Synthesizes FLUX.1 visual assets across key rotation and reschedules backoff via Celery retry."""
+def generate_and_update_image_task(self, post_id: str, image_prompt: str = None, title: str = None, description: str = None, category: list = None) -> bool:
+    """Synthesizes high-precision FLUX visual assets via Cloudflare/Pollinations cascade and updates MongoDB."""
     attempt_num = self.request.retries + 1
-    logging.info(f"[ImageWorker] Initiated FLUX.1 task for post '{post_id}' (attempt {attempt_num}/4)...")
+    logging.info(f"[ImageWorker] Initiated FLUX task for post '{post_id}' (attempt {attempt_num}/4)...")
 
-    if not image_prompt and title:
-        image_prompt = (
-            f"Cinematic digital illustration of {title}, clean 16:9 composition, high quality lighting"
-        )
-
-    if not image_prompt:
-        logging.warning(f"[ImageWorker] No prompt available for '{post_id}'. Retaining default image.")
-        return False
-
-    # Attempt generation across active keys in this cycle without blocking worker on sleep
-    image_url = huggingface_image(prompt=image_prompt, max_rounds=1, wait_seconds=0)
+    image_url = huggingface_image(
+        prompt=image_prompt,
+        title=title,
+        description=description,
+        category=category,
+        max_rounds=1,
+        wait_seconds=0
+    )
 
     if image_url:
         mongo_service = MongoDBService()
         mongo_service.update_post_image(post_id, image_url)
-        logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with FLUX.1 image.")
+        logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with FLUX image.")
         return True
     else:
         if self.request.retries < self.max_retries:
             logging.warning(
-                f"[ImageWorker] All Hugging Face keys exhausted for '{post_id}'. Scheduling retry in 300s via Celery..."
+                f"[ImageWorker] Image generation pending for '{post_id}'. Rescheduling retry in 60s..."
             )
-            raise self.retry(countdown=300)
+            raise self.retry(countdown=60)
         else:
             logging.error(f"[ImageWorker] All retries exhausted for '{post_id}'. Retaining default image.")
             return False
@@ -103,7 +100,7 @@ def generate_image_task(item: dict) -> dict:
     }
 
 def _format_article_html(item: dict) -> str:
-    """Transforms raw markdown content into editorial HTML blocks with clickable links and code styling."""
+    """Transforms article into a concise, high-deliverability editorial briefing block."""
     title = item.get("title", "Technical Update")
     category = item.get("category", ["Breaking News"])
     if isinstance(category, list):
@@ -112,7 +109,7 @@ def _format_article_html(item: dict) -> str:
         cat_str = str(category)
     cat_str = cat_str.split("|")[0].strip()
 
-    description = item.get("description", "")
+    description = item.get("description", "").strip()
     content = item.get("content", "")
 
     # Extract dynamic takeaway if available from article content
@@ -125,66 +122,26 @@ def _format_article_html(item: dict) -> str:
     elif description:
         takeaway = description
 
-    formatted_sections = []
-    if content:
-        lines = content.strip().split("\n")
-        in_list = False
-        parsed_lines = []
+    # Format concise paragraph with clean inline formatting
+    clean_summary = description
+    clean_summary = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean_summary)
+    clean_summary = re.sub(r"\*(.*?)\*", r"<em>\1</em>", clean_summary)
+    clean_summary = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', clean_summary)
+    clean_summary = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', clean_summary)
 
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                if in_list:
-                    parsed_lines.append("</ul>")
-                    in_list = False
-                continue
-
-            if stripped.startswith("## ") or stripped.startswith("### "):
-                if in_list:
-                    parsed_lines.append("</ul>")
-                    in_list = False
-                heading_text = stripped.lstrip("#").strip()
-                parsed_lines.append(f"<h3>{heading_text}</h3>")
-            elif stripped.startswith("- ") or stripped.startswith("* ") or re.match(r"^\d+\.\s", stripped):
-                if not in_list:
-                    parsed_lines.append("<ul>")
-                    in_list = True
-                item_text = re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped)
-                item_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", item_text)
-                item_text = re.sub(r"\*(.*?)\*", r"<em>\1</em>", item_text)
-                item_text = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', item_text)
-                item_text = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', item_text)
-                parsed_lines.append(f"<li>{item_text}</li>")
-            else:
-                if in_list:
-                    parsed_lines.append("</ul>")
-                    in_list = False
-                para_text = stripped
-                para_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", para_text)
-                para_text = re.sub(r"\*(.*?)\*", r"<em>\1</em>", para_text)
-                para_text = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', para_text)
-                para_text = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', para_text)
-                parsed_lines.append(f"<p>{para_text}</p>")
-
-        if in_list:
-            parsed_lines.append("</ul>")
-
-        formatted_sections.append("\n".join(parsed_lines))
-    elif description:
-        formatted_sections.append(f"<p>{description}</p>")
-
-    body_html = "\n".join(formatted_sections)
+    clean_takeaway = takeaway
+    clean_takeaway = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean_takeaway)
+    clean_takeaway = re.sub(r"\*(.*?)\*", r"<em>\1</em>", clean_takeaway)
+    clean_takeaway = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', clean_takeaway)
+    clean_takeaway = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', clean_takeaway)
 
     return f"""
     <div class="article-entry">
         <span class="category-tag">{cat_str}</span>
         <h2 class="article-title">{title}</h2>
-        <p class="article-summary">{description}</p>
-        <div class="article-body">
-            {body_html}
-        </div>
+        <p class="article-summary">{clean_summary}</p>
         <div class="takeaway-box">
-            <strong>Key Engineering Impact:</strong> {takeaway}
+            <strong>Key Engineering Impact:</strong> {clean_takeaway}
         </div>
     </div>
     """

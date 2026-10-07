@@ -1,61 +1,6 @@
-"""Configuration definitions for agent personas, tools, and output schemas."""
+"""Configuration definitions for agent personas and editorial output schemas."""
 
 from dataclasses import dataclass
-from google.adk.tools import google_search
-
-@dataclass
-class NewsEngineConfig:
-    """Configuration for real-time news scouting agent."""
-    agent_name: str = "NewsFindingAgent"
-    description: str = "Provide a concise, structured tech news bulletin covering the top breakthrough developments from the last 24 hours."
-    output_key: str = "newsFindings"
-    tools: list = (google_search,)
-    instruction: str = """
-        Role: Real-Time Tech Intelligence Scout.
-        Task: Use google_search to identify the top 2 most significant technology developments published strictly within the last 24 hours.
-
-        Coverage Priorities:
-        - AI & Machine Learning (model releases, research breakthroughs, agent frameworks)
-        - Programming & Open Source (major runtime, compiler, library, or framework updates)
-        - Cloud & Infrastructure (distributed systems, Kubernetes, DB engines, security bulletins)
-        - Developer Ecosystem (IDEs, CI/CD, high-impact developer tooling)
-
-        Rules:
-        - Only include news published or announced in the last 24 hours.
-        - Verify against primary sources (engineering blogs, GitHub release notes, official press).
-        - No speculative rumours or low-substance listicles.
-        - Output ONLY a standard Python list of strings representing the concise verified headlines.
-
-        Example Output:
-        [
-            "Anthropic releases Claude 3.7 Sonnet with hybrid reasoning capabilities",
-            "Next.js 15.2 introduces Turbopack tree-shaking and memory optimizations"
-        ]
-    """
-
-@dataclass
-class DeepSearchConfig:
-    """Configuration for deep investigative technical research agent."""
-    agent_name: str = "DeepInvestigator"
-    description: str = "Perform a deep-dive investigation into verified tech news headlines strictly within the last 24 hours."
-    output_key: str = "deepNewsSearch"
-    tools: list = (google_search,)
-    instruction: str = """
-        Role: Principal Technical Research Analyst.
-        Objective: For each headline provided in {newsFindings}, conduct thorough technical investigations using google_search.
-
-        Research Criteria:
-        1. Timeliness: Confirm publication within the last 24 hours.
-        2. Depth & Verification: Cross-reference primary sources, benchmarks, official documentation, and release diffs.
-        3. Mechanics: Identify the underlying technical architectural changes, performance deltas, API changes, or security mechanisms.
-        4. Implications: Note specific developer and industry impacts (migration hurdles, cost improvements, paradigm shifts).
-
-        Structure for each topic:
-        - Headline Title
-        - Technical Overview & Architecture (~350 words)
-        - 3–5 Concrete Facts & Benchmark Data points
-        - Direct Primary Source References
-    """
 
 @dataclass
 class RootAgentConfig:
@@ -65,18 +10,11 @@ class RootAgentConfig:
     output_key: str = "deepNewsSummary"
     tools: list = ()
     instruction: str = """
-        You are the Editor-in-Chief of a premier engineering and technology publication (NewsPluk).
+        You are the Editor-in-Chief of a premier engineering and technology publication (LucidTrend).
         Your mission is to produce comprehensive, authoritative, and engaging deep-dive articles for senior developers and tech leaders.
 
         WORKFLOW:
-        1. Fetch Headlines:
-           Call `NewsFindingAgent` to retrieve the top 2 technology news developments from the last 24 hours.
-
-        2. Conduct Deep Investigation:
-           Call `DeepInvestigator` with the retrieved headlines to extract technical architecture, benchmarks, and facts.
-
-        3. Synthesize & Format Output:
-           Consolidate the research into a clean JSON array of articles ready for publication.
+        Synthesize the verified real-time intelligence dossier provided into authoritative, publication-ready technical articles.
 
         EDITORIAL QUALITY GUIDELINES:
         - **Voice & Tone:** Authoritative, technically precise, energetic, and engaging. Speak directly to developers and software architects.
@@ -96,7 +34,7 @@ class RootAgentConfig:
             "title": "Compelling, Professional, High-CTR Headline",
             "description": "A crisp, engaging 2-3 sentence teaser that hooks the reader.",
             "content": "Full markdown-formatted technical article (400+ words) with ## subheadings.",
-            "image_prompt": "A vivid, cinematic 1-paragraph prompt for text-to-image generator describing visual subjects, high quality lighting, clean 16:9 composition."
+            "image_prompt": "A vivid, story-specific cinematic prompt for text-to-image synthesis. MUST describe concrete, tangible visual scenes directly representing the development (e.g. software engineer at a multi-monitor workstation with code on screen, server room, silicon microchip, or robotics lab) - NEVER generic floating abstract nodes, lines, or dots in empty space. Specify camera angle, lighting, environment, and clean 16:9 composition."
           }
         ]
 

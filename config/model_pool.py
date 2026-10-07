@@ -7,11 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODEL_POOL = [
-    "gemini-2.5-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
     "gemini-flash-latest",
-    "gemini-2.5-flash-lite",
     "gemini-flash-lite-latest",
-    "gemini-pro-latest",
 ]
 
 class KeyModelCoordinator:
@@ -31,7 +31,10 @@ class KeyModelCoordinator:
         self._sync_environment()
 
     def _load_keys(self) -> list:
-        raw = os.getenv("GOOGLE_API_KEYS") or os.getenv("GOOGLE_API_KEY") or ""
+        # Safely read keys from .env without clobbering container Docker hostnames
+        from dotenv import dotenv_values
+        vals = dotenv_values()
+        raw = vals.get("GOOGLE_API_KEYS") or vals.get("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEYS") or os.getenv("GOOGLE_API_KEY") or ""
         parsed = [k.strip() for k in raw.split(",") if k.strip()]
         if not parsed:
             logging.warning("[Coordinator] No GOOGLE_API_KEY or GOOGLE_API_KEYS found in environment.")
@@ -47,7 +50,7 @@ class KeyModelCoordinator:
         active_key = self.get_active_key()
         if active_key:
             os.environ["GOOGLE_API_KEY"] = active_key
-            os.environ.pop("GEMINI_API_KEY", None)
+            os.environ["GEMINI_API_KEY"] = active_key
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=active_key)
@@ -64,6 +67,14 @@ class KeyModelCoordinator:
         if not keys:
             return ""
         return keys[self.key_index % len(keys)]
+
+    def advance_key_round_robin(self) -> str:
+        """Proactively advances to the next valid key in round-robin sequence."""
+        keys = self.valid_keys
+        if len(keys) > 1:
+            self.key_index = (self.key_index + 1) % len(keys)
+            self._sync_environment()
+        return self.get_active_key()
 
     def get_active_pair(self) -> tuple:
         """Returns the current active model name and API key pair."""
@@ -144,3 +155,8 @@ def rotate_model(failed_model=None, error_code="") -> str:
 def report_failure(failed_model=None, failed_key=None, error_code="") -> tuple:
     """Reports a failure to the coordinator to trigger failover."""
     return coordinator.report_failure(failed_model, failed_key, error_code)
+
+def advance_key() -> str:
+    """Proactively advances to the next available API key in round-robin sequence."""
+    return coordinator.advance_key_round_robin()
+

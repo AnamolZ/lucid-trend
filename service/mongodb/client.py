@@ -126,8 +126,15 @@ class MongoDBService:
         client = self._get_client()
         db = client[self.db_name]
         col = db[self.collection_name]
+        from bson import ObjectId
+        query = {"id": post_id}
+        if isinstance(post_id, ObjectId):
+            query = {"_id": post_id}
+        elif isinstance(post_id, str) and ObjectId.is_valid(post_id):
+            query = {"$or": [{"id": post_id}, {"_id": ObjectId(post_id)}]}
+
         res = col.update_one(
-            {"id": post_id},
+            query,
             {"$set": {"image": image_url, "thumbnail": image_url}}
         )
         logging.info(
