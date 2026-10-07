@@ -39,7 +39,7 @@ LucidTrend operates with two complementary execution layers:
 
 1. **Continuous Daemon (`main.py`)**:
    - **Autonomous 12-Hour Schedule**: Triggers full intelligence scouting and publishing twice daily with an exact 12-hour separation (e.g., `05:00` and `17:00` Asia/Kathmandu). Supports live random reshuffling.
-   - **Celery & Redis Worker**: Handles asynchronous image generation with a 4-key Hugging Face failover ladder.
+   - **Celery & Redis Worker**: Handles asynchronous image generation via Cloudflare Workers AI FLUX with multi-tier failover.
    - **Temp Cleaner**: Sweeps and removes generated temporary assets every 60 minutes.
    - **FastAPI Management Server**: Exposes authenticated REST endpoints on port `8000`.
 
@@ -82,7 +82,7 @@ COLLECTION_NAME=posts
 
 # 2. Google Gemini API Keys (comma-separated keys supported for failover)
 GOOGLE_API_KEY=your_gemini_key_1,your_gemini_key_2
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.7-flash
 
 # 3. SMTP Newsletter Settings (Brevo / SendGrid / Postmark)
 SMTP_SERVER=smtp-relay.brevo.com
@@ -93,8 +93,10 @@ SMTP_PASSWORD=your_smtp_relay_key
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 
-# 5. Hugging Face Image Generation Keys (comma-separated for 4-key failover ladder)
-HUGGING_FACE_TOKENS=hf_token_1,hf_token_2,hf_token_3,hf_token_4
+# 5. Image Generation (Cloudflare Workers AI FLUX & Multi-Provider Cascade)
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+HUGGING_FACE_TOKENS=hf_token_1,hf_token_2
 HUGGING_FACE_TOKEN=hf_token_1
 
 # 6. Management API & CLI Security
