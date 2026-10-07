@@ -26,3 +26,6 @@ logs/
 *.log
 temp/
 
+# Firebase Credentials
+*firebase*.json
+*-adminsdk-*.json

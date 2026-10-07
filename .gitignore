@@ -19,3 +19,7 @@ logs/
 # Temporary test outputs & auto-cleared directories
 flux_test_output.png
 temp/
+
+# Firebase & Cloud Credentials
+*firebase*.json
+*-adminsdk-*.json

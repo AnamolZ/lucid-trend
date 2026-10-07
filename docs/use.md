@@ -15,6 +15,7 @@ Comprehensive user guide for the **LucidTrend Autonomous Tech Intelligence Engin
    - [`reshuffle` — Live 12-Hour Schedule Reshuffle](#reshuffle--live-12-hour-schedule-reshuffle)
    - [`rotate-key` / `regenerate-key` — Master-Password Key Rotation](#rotate-key--regenerate-key--master-password-key-rotation)
    - [`generate-image` — Standalone FLUX.1 Visual Generation](#generate-image--standalone-flux1-visual-generation)
+   - [`push-test` — Broadcast Test Mobile Push Notification](#push-test--broadcast-test-mobile-push-notification)
    - [`cleanup-temp` — Purge Server Temporary Assets](#cleanup-temp--purge-server-temporary-assets)
 5. [REST API Endpoint Reference](#5-rest-api-endpoint-reference)
    - [Authentication Headers](#authentication-headers)
@@ -24,6 +25,7 @@ Comprehensive user guide for the **LucidTrend Autonomous Tech Intelligence Engin
    - [`POST /api/v1/image/generate`](#post-apiv1imagegenerate)
    - [`GET /temp/{filename}`](#get-tempfilename)
    - [`POST /api/v1/cleanup/temp`](#post-apiv1cleanuptemp)
+   - [`POST /api/v1/push/test`](#post-apiv1pushtest)
    - [`POST /api/v1/auth/rotate-key`](#post-apiv1authrotate-key)
 6. [Testing with Postman](#6-testing-with-postman)
    - [Postman Environment Setup](#postman-environment-setup)
@@ -99,7 +101,11 @@ CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
 HUGGING_FACE_TOKENS=hf_token_1,hf_token_2
 HUGGING_FACE_TOKEN=hf_token_1
 
-# 6. Management API & CLI Security
+# 6. Firebase Cloud Messaging (FCM Mobile Push)
+FIREBASE_CREDENTIALS_PATH=firebase-service-account.json
+FIREBASE_NOTIFICATION_TOPIC=all_news
+
+# 7. Management API & CLI Security
 API_SECRET_KEY=lt_sec_9293a9b1edbc0db1cad7db0cb8b0eb20
 MASTER_PASSWORD=lucidtrend1379
 SERVER_HOST=0.0.0.0
@@ -270,6 +276,38 @@ uv run cli.py generate-image --prompt "Cinematic digital illustration of futuris
 
 # Specify custom local output path
 uv run cli.py generate-image --title "Autonomous Agentic AI" --output ./my_hero_image.png
+```
+
+---
+
+### `push-test` — Broadcast Test Mobile Push Notification
+Dispatches a test push notification to mobile app subscribers via Google Firebase Cloud Messaging (FCM). Automatically targets the `all_news` topic and Android notification channel `dispatches`.
+
+```bash
+# Basic test notification
+uv run cli.py push-test --title "Breaking: Quantum Superiority Benchmark"
+
+# Full custom test with deep link and description
+uv run cli.py push-test \
+  --title "Rust 2026 Edition Published" \
+  --body "Deep dive into language features, memory safety guarantees, and ecosystem tooling." \
+  --post-id "post_rust_2026_edition"
+
+# Custom topic override
+uv run cli.py push-test --title "Urgent Security Bulletin" --topic "critical_alerts"
+```
+
+#### Example Output:
+```text
+[CLI] Dispatching test push notification to topic 'all_news'...
+
+=================================================================
+ [SUCCESS] Firebase Mobile Push Dispatched
+=================================================================
+  Topic    : all_news
+  Title    : Rust 2026 Edition Published
+  Post ID  : post_rust_2026_edition
+=================================================================
 ```
 
 ---
@@ -453,6 +491,46 @@ Purges all cached image files from the server's temporary directory.
   {
     "success": true,
     "files_purged": 3
+  }
+  ```
+
+---
+
+### `POST /api/v1/push/test`
+Broadcasts a push notification to connected mobile application devices subscribed to Google Firebase Cloud Messaging (FCM).
+
+* **Headers**:
+  - `X-API-Key: <API_KEY>`
+  - `Content-Type: application/json`
+* **Request Body Schema**:
+  ```json
+  {
+    "title": "Breaking Technology Dispatch",
+    "body": "Optional body text or summary",
+    "post_id": "optional_article_id_for_deep_linking",
+    "topic": "all_news"
+  }
+  ```
+* **cURL Command**:
+  ```bash
+  curl -X POST http://localhost:8000/api/v1/push/test \
+    -H "X-API-Key: lt_sec_your_api_key_here" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "title": "Rust 2026 Edition Announced",
+      "body": "Complete analysis of borrow checker updates and new standard library APIs.",
+      "post_id": "rust_2026_edition",
+      "topic": "all_news"
+    }'
+  ```
+* **Sample Response (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "FCM push notification broadcasted successfully to topic.",
+    "topic": "all_news",
+    "title": "Rust 2026 Edition Announced",
+    "post_id": "rust_2026_edition"
   }
   ```
 

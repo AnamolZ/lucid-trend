@@ -174,3 +174,27 @@ def send_email_task(news_json_str: str) -> bool:
     sent_count = send_bulk_emails(email_entries, SMTP_SERVER, SMTP_USER, SMTP_PASSWORD)
     logging.info(f"[EmailWorker] Newsletter dispatch complete: {sent_count}/{len(addresses)} sent.")
     return True
+
+@celery_app.task
+def send_push_notification_task(item: dict) -> bool:
+    """Dispatches a mobile push notification via Firebase FCM for an individual article."""
+    from service.notifications.push_service import send_article_push
+    logging.info(f"[PushWorker] Broadcasting FCM push notification for post '{item.get('id')}'...")
+    return send_article_push(item)
+
+@celery_app.task
+def send_push_notifications_batch_task(news_json_str: str) -> int:
+    """Dispatches mobile push notifications to Firebase topic 'all_news' for a batch of published articles."""
+    from service.notifications.push_service import send_article_push
+    try:
+        articles = json.loads(news_json_str) if isinstance(news_json_str, str) else news_json_str
+        sent = 0
+        for art in articles:
+            logging.info(f"[PushWorker] Broadcasting FCM push notification for '{art.get('title')}'...")
+            if send_article_push(art):
+                sent += 1
+        logging.info(f"[PushWorker] Mobile push broadcast complete: {sent}/{len(articles)} dispatches sent.")
+        return sent
+    except Exception as e:
+        logging.error(f"[PushWorker] Batch push dispatch failed: {e}")
+        return 0

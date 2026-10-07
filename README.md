@@ -13,6 +13,7 @@ flowchart LR
     B --> C[Data Extraction\nLocal JSON Parsing]
     C --> D[Immediate Publish\nMongoDB Atlas]
     D --> E[Editorial Newsletter\nConcise Briefing Cards]
+    D --> F[Mobile Push (FCM)\nReal-Time App Broadcast]
 ```
 
 ### 2. High-Precision Image Synthesis Cascade
@@ -33,7 +34,8 @@ flowchart LR
     A[Operator / Developer\nTerminal CLI] <-->|Authenticated API| B[FastAPI Management Server\nPort 8000]
     B --> C[Modular Pipeline Runs\n--without flags]
     B --> D[On-Demand Image Gen\nFLUX.1 Visual Assets]
-    B --> E[Security & Key Rotation\nMaster Password Auth]
+    B --> E[Mobile Push Testing\nFirebase Topic Broadcast]
+    B --> F[Security & Key Rotation\nMaster Password Auth]
 ```
 
 ---
@@ -42,8 +44,8 @@ flowchart LR
 
 For in-depth explanations, configuration guides, and complete operational instructions:
 
-* **[Architecture & Mechanism Guide (docs/mechanism.md)](docs/mechanism.md)**: Deep dive into the 2-stage grounded intelligence pipeline, Cloudflare Workers AI FLUX cascade, story-grounded visual prompt engineering, and database protocols.
-* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Step-by-step setup guide for native and Docker environments, `.env` configuration (Cloudflare, Gemini, Mongo, SMTP), CLI commands, and REST API documentation.
+* **[Architecture & Mechanism Guide (docs/mechanism.md)](docs/mechanism.md)**: Deep dive into the 2-stage grounded intelligence pipeline, Cloudflare Workers AI FLUX cascade, story-grounded visual prompt engineering, and the Firebase Cloud Messaging mobile push architecture.
+* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Step-by-step setup guide for native and Docker environments, `.env` configuration (Cloudflare, Gemini, Mongo, SMTP, Firebase), CLI commands, and REST API documentation.
 
 ---
 

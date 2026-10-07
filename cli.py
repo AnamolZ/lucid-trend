@@ -256,6 +256,31 @@ def handle_cleanup_temp(server_url: str, api_key: str, args):
     else:
         print(f"\n[ERROR] Cleanup failed: {resp.text}\n")
 
+def handle_push_test(server_url: str, api_key: str, args):
+    """Sends a test mobile push notification via the server."""
+    check_server_connection(server_url, api_key)
+    endpoint = f"{server_url.rstrip('/')}/api/v1/push/test"
+    payload = {
+        "title": getattr(args, "title", None) or "NewsPluk | Push Notification Test",
+        "body": getattr(args, "body", None) or "Firebase background push delivered successfully!",
+        "post_id": getattr(args, "post_id", None) or "test-push",
+        "topic": getattr(args, "topic", None) or "all_news"
+    }
+    print(f"\n[CLI] Dispatching test push notification to topic '{payload['topic']}'...")
+    resp = requests.post(endpoint, json=payload, headers={"X-API-Key": api_key}, timeout=15)
+    if resp.status_code == 200:
+        data = resp.json()
+        print("\n" + "=" * 65)
+        print(" [SUCCESS] Firebase Mobile Push Dispatched")
+        print("=" * 65)
+        print(f"  Topic    : {data.get('topic')}")
+        print(f"  Title    : {data.get('title')}")
+        print(f"  Post ID  : {data.get('post_id')}")
+        print("=" * 65 + "\n")
+    else:
+        print(f"\n[ERROR] Push dispatch failed ({resp.status_code}): {resp.text}\n")
+        sys.exit(1)
+
 def handle_rotate_key(server_url: str, args):
     """Regenerates a new server API key using master password authentication."""
     master_pwd = getattr(args, "master_password", None)
@@ -388,6 +413,14 @@ Examples:
     cleanup_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
     cleanup_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
 
+    push_parser = subparsers.add_parser("push-test", help="Broadcast a test push notification to mobile app via Firebase")
+    push_parser.add_argument("--title", help="Notification title")
+    push_parser.add_argument("--body", help="Notification message body")
+    push_parser.add_argument("--post-id", help="Article ID for deep-linking")
+    push_parser.add_argument("--topic", default="all_news", help="Firebase topic (default: all_news)")
+    push_parser.add_argument("--server", default=argparse.SUPPRESS, help="Server URL")
+    push_parser.add_argument("--key", default=argparse.SUPPRESS, help="API Secret Key")
+
     args = parser.parse_args()
 
     server_url = getattr(args, "server", DEFAULT_SERVER)
@@ -409,6 +442,8 @@ Examples:
         handle_reshuffle(server_url, api_key, args)
     elif args.command == "cleanup-temp":
         handle_cleanup_temp(server_url, api_key, args)
+    elif args.command == "push-test":
+        handle_push_test(server_url, api_key, args)
 
 if __name__ == "__main__":
     main()

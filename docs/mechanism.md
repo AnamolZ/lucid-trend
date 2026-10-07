@@ -55,6 +55,14 @@ flowchart TD
         EmailWorker --> |Transmit Concise HTML Cards| SMTPRelay
     end
 
+    subgraph Push ["Mobile Push Broadcast Engine (Firebase FCM)"]
+        PushWorker["Push Dispatcher (send_push_notification_task)"]
+        FCM["Firebase Cloud Messaging (FCM)"]
+        MobileDevices[("Mobile App Devices (Topic: all_news)")]
+        PushWorker --> |Topic Broadcast Payload| FCM
+        FCM --> |Push Alert + Deep Link| MobileDevices
+    end
+
     subgraph Imagery ["3-Tier High-Precision Image Cascade"]
         ImageWorker["Celery Worker / Fallback Thread"]
         VisualDirector["Visual Grounding Engine (build_grounded_flux_prompt)"]
@@ -75,6 +83,7 @@ flowchart TD
     Intelligence --> LocalParser
     LocalParser --> Persistence
     Persistence --> Newsletter
+    Persistence --> Push
     Persistence -.-> |Non-Blocking Trigger| Imagery
 ```
 
@@ -239,3 +248,54 @@ flowchart TD
 
 - **Clean Typography**: Eliminates raw 500-word markdown code dumps and ASCII diagrams from email inboxes while preserving the complete deep-dive content on the website.
 - **Key Engineering Impact**: Highlighting critical takeaways, migration hurdles, or benchmark gains in a dedicated callout box.
+
+---
+
+## 6. Real-Time Mobile Push Notification Architecture (Firebase FCM)
+
+To notify mobile readers immediately upon publication, LucidTrend integrates directly with Google Firebase Cloud Messaging (FCM) using the official `firebase-admin` SDK.
+
+```mermaid
+flowchart TD
+    Publish([New Articles Published to MongoDB Atlas]) --> NotifySub[notify_subscribers Pipeline]
+    
+    NotifySub --> CeleryQueue["Celery Task Queue (send_push_notifications_batch_task)"]
+    
+    subgraph FCMWorker ["Mobile Push Worker (push_service.py)"]
+        InitCheck{Firebase Initialized?}
+        LoadKey[Load Service Account Key JSON]
+        InitSDK[firebase_admin.initialize_app]
+        BuildPayload[Construct High-Priority FCM Message]
+        SendFCM[messaging.send(message)]
+        
+        InitCheck -- No --> LoadKey --> InitSDK --> BuildPayload
+        InitCheck -- Yes --> BuildPayload
+        BuildPayload --> SendFCM
+    end
+    
+    CeleryQueue --> FCMWorker
+    NotifySub -.->|Fallback if Celery Offline| FCMWorker
+    
+    subgraph TopicBroadcast ["Google FCM Topic Infrastructure"]
+        FCMService["Google FCM Gateway"]
+        Topic["Topic: 'all_news'"]
+        SendFCM --> FCMService --> Topic
+    end
+    
+    subgraph MobileClients ["NewsPluk Mobile Application (iOS / Android)"]
+        Capacitor["@capacitor/push-notifications"]
+        Channel["Android Channel: 'dispatches' (High Priority)"]
+        AppOpen["User Tap -> Deep Links to /{post_id}"]
+        
+        Topic --> Capacitor
+        Capacitor --> Channel
+        Channel --> AppOpen
+    end
+```
+
+### Push Payload Structure
+- **Topic**: `all_news` (configurable via `FIREBASE_NOTIFICATION_TOPIC`).
+- **Notification Header**: `title: "NewsPluk | New Dispatch Published"`, `body: "<Article Title>"`.
+- **Data Attributes**: `id: "<Article ID>"`, `link: "/<Article ID>"` for Capacitor client deep-linking.
+- **Android Configuration**: Channel ID `dispatches`, high notification priority, default alert sound.
+- **APNS (iOS) Configuration**: Sound enabled, high-priority background delivery payload.

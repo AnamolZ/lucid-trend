@@ -21,13 +21,27 @@ def notify_subscribers(data_or_path, model=None, mongo_uri: str = None, smtp_ser
         return True
 
     news_json_str = json.dumps(news_data, ensure_ascii=False)
-    logging.info(f"[NotifySubscribers] Queuing newsletter dispatch task with {len(news_data)} articles...")
+    logging.info(f"[NotifySubscribers] Queuing newsletter & mobile push dispatch for {len(news_data)} articles...")
 
-    task = send_email_task.delay(news_json_str)
+    # 1. Dispatch Email Newsletter Task
     try:
-        task.get(timeout=30)
-        logging.info("[NotifySubscribers] Newsletter dispatched successfully.")
-        return True
+        email_task = send_email_task.delay(news_json_str)
+        logging.info("[NotifySubscribers] Queued email newsletter dispatch task via Celery.")
     except Exception as e:
-        logging.info(f"[NotifySubscribers] Task queued in background worker ({e}).")
-        return True
+        logging.warning(f"[NotifySubscribers] Failed to queue email task: {e}")
+
+    # 2. Dispatch Mobile Push Notifications Task (Firebase FCM)
+    try:
+        from service.tasks.tasks import send_push_notifications_batch_task
+        push_task = send_push_notifications_batch_task.delay(news_json_str)
+        logging.info("[NotifySubscribers] Queued mobile push notification task via Celery.")
+    except Exception as push_err:
+        logging.warning(f"[NotifySubscribers] Celery push queue offline ({push_err}). Dispatching inline push...")
+        try:
+            from service.notifications.push_service import send_article_push
+            for art in news_data:
+                send_article_push(art)
+        except Exception as inline_err:
+            logging.error(f"[NotifySubscribers] Inline push dispatch failed: {inline_err}")
+
+    return True

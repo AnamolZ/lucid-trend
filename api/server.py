@@ -101,6 +101,13 @@ class EmailTestRequest(BaseModel):
     """Payload for subscriber email test dispatches."""
     to_email: Optional[str] = Field(default=None, description="Optional recipient email address")
 
+class PushTestRequest(BaseModel):
+    """Payload for mobile push test broadcasts."""
+    title: Optional[str] = Field(default="NewsPluk | Push Notification Test", description="Notification title")
+    body: Optional[str] = Field(default="Firebase background push delivered successfully!", description="Notification body")
+    post_id: Optional[str] = Field(default="test-push", description="Post ID for deep-linking")
+    topic: Optional[str] = Field(default="all_news", description="Firebase topic")
+
 class RotateKeyRequest(BaseModel):
     """Payload for rotating the system API key via master password."""
     master_password: str = Field(..., description="Master administration password")
@@ -258,6 +265,30 @@ async def cleanup_temp_endpoint():
     """Forces an immediate sweep and purge of files in the temp directory."""
     deleted = await asyncio.to_thread(clean_temp_directory, max_age_seconds=0)
     return {"success": True, "files_purged": deleted}
+
+@app.post("/api/v1/push/test", dependencies=[Depends(verify_api_key)])
+async def test_push_endpoint(req: PushTestRequest):
+    """Broadcasts a test push notification to mobile app devices via Firebase FCM."""
+    from service.notifications.push_service import send_push_notification
+    success = await asyncio.to_thread(
+        send_push_notification,
+        title=req.title,
+        body=req.body,
+        post_id=req.post_id,
+        topic=req.topic
+    )
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to dispatch Firebase push notification. Check service account credentials."
+        )
+    return {
+        "success": True,
+        "message": "FCM push notification broadcasted successfully to topic.",
+        "topic": req.topic,
+        "title": req.title,
+        "post_id": req.post_id
+    }
 
 @app.post("/api/v1/auth/rotate-key")
 async def rotate_key_endpoint(req: RotateKeyRequest, request: Request):
