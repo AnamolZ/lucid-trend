@@ -1394,6 +1394,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiosmtplib" },
     { name = "celery" },
+    { name = "fastapi" },
     { name = "google-adk" },
     { name = "google-generativeai" },
     { name = "huggingface-hub" },
@@ -1401,13 +1402,16 @@ dependencies = [
     { name = "pymongo" },
     { name = "python-dotenv" },
     { name = "redis" },
+    { name = "requests" },
     { name = "schedule" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiosmtplib", specifier = ">=5.0.0" },
     { name = "celery", specifier = ">=5.3.6" },
+    { name = "fastapi", specifier = ">=0.110.0" },
     { name = "google-adk", specifier = ">=1.19.0" },
     { name = "google-generativeai", specifier = ">=0.8.5" },
     { name = "huggingface-hub", specifier = ">=1.1.6" },
@@ -1415,7 +1419,9 @@ requires-dist = [
     { name = "pymongo", specifier = ">=4.15.4" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "redis", specifier = ">=5.0.1" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "schedule", specifier = ">=1.2.2" },
+    { name = "uvicorn", specifier = ">=0.28.0" },
 ]
 
 [[package]]

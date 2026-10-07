@@ -131,7 +131,7 @@ def handle_pipeline(server_url: str, api_key: str, args):
         f"{server_url.rstrip('/')}/api/v1/pipeline/run",
         headers={"X-API-Key": api_key, "Content-Type": "application/json"},
         json=payload,
-        timeout=180
+        timeout=360
     )
 
     if resp.status_code != 200:
