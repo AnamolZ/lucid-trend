@@ -2,225 +2,157 @@
 
 from datetime import datetime
 
-def notify_subscriber_template(header: str, news_content: str, user_email: str) -> str:
-    """Renders a responsive, text-only HTML briefing designed for high deliverability and clarity."""
-    current_date = datetime.now().strftime("%B %d, %Y")
+def notify_subscriber_template(header: str, news_content: str, user_email: str, summary_content: str = "") -> str:
+    """Renders a responsive, high-deliverability editorial briefing inspired by clean Google aesthetic."""
+    current_date = datetime.now().strftime("%A, %B %d, %Y")
+    current_year = datetime.now().year
+
+    summary_section = ""
+    if summary_content:
+        summary_section = f"""
+            <!-- TOP SUMMARY CARD (Soft Executive Digest) -->
+            <tr>
+                <td class="summary-cell" style="padding: 26px 40px 0 40px;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"
+                        style="background-color: #f8f9fa; border: 1px solid #e8eaed; border-radius: 8px;">
+                        <tr>
+                            <td style="padding: 18px 20px;">
+                                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"
+                                    style="margin-bottom: 12px;">
+                                    <tr>
+                                        <td style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #1a73e8;">
+                                            Executive Summary
+                                        </td>
+                                    </tr>
+                                </table>
+                                {summary_content}
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        """
 
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>{header}</title>
+    <!--[if mso]>
+    <style type="text/css">
+        body, table, td, p, h1, h2, h3, span {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }}
+    </style>
+    <![endif]-->
     <style>
         body {{
             margin: 0;
             padding: 0;
-            background-color: #f1f5f9;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            color: #1e293b;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #202124;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }}
-        .wrapper {{
-            width: 100%;
-            background-color: #f1f5f9;
-            padding: 40px 12px;
-            box-sizing: border-box;
-        }}
-        .container {{
-            max-width: 660px;
-            margin: 0 auto;
-            background: #ffffff;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
-        }}
-        .masthead {{
-            padding: 32px 36px 24px 36px;
-            border-bottom: 2px solid #0f172a;
-            background: #ffffff;
-        }}
-        .masthead-meta {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: #64748b;
-            margin-bottom: 12px;
-        }}
-        .masthead-brand {{
-            color: #0f172a;
-            font-size: 13px;
-            letter-spacing: 2px;
-            font-weight: 800;
-        }}
-        .masthead-date {{
-            color: #64748b;
-        }}
-        .masthead h1 {{
-            margin: 8px 0 0 0;
-            font-size: 26px;
-            font-weight: 800;
-            line-height: 1.3;
-            color: #0f172a;
-            letter-spacing: -0.5px;
-        }}
-        .content {{
-            padding: 36px 36px 28px 36px;
-            font-size: 16px;
-            line-height: 1.75;
-            color: #334155;
-        }}
-        .article-entry {{
-            margin-bottom: 36px;
-            padding-bottom: 36px;
-            border-bottom: 1px solid #e2e8f0;
-        }}
-        .article-entry:last-child {{
-            margin-bottom: 0;
-            padding-bottom: 0;
-            border-bottom: none;
-        }}
-        .category-tag {{
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #2563eb;
-            background: #eff6ff;
-            padding: 3px 10px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-        }}
-        .article-title {{
-            margin: 0 0 14px 0;
-            font-size: 22px;
-            font-weight: 700;
-            color: #0f172a;
-            line-height: 1.35;
-            letter-spacing: -0.3px;
-        }}
-        .article-summary {{
-            font-size: 16px;
-            font-weight: 500;
-            color: #475569;
-            margin: 0 0 18px 0;
-            line-height: 1.7;
-        }}
-        .article-body {{
-            font-size: 15px;
-            color: #334155;
-            line-height: 1.8;
-        }}
-        .article-body h3 {{
-            margin: 22px 0 10px 0;
-            font-size: 16px;
-            font-weight: 700;
-            color: #0f172a;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        .article-body p {{
-            margin: 0 0 16px 0;
-        }}
-        .article-body ul {{
-            margin: 0 0 18px 0;
-            padding-left: 20px;
-        }}
-        .article-body li {{
-            margin-bottom: 6px;
-        }}
-        .takeaway-box {{
-            margin-top: 18px;
-            padding: 14px 18px;
-            background: #f8fafc;
-            border-left: 3px solid #2563eb;
-            border-radius: 0 6px 6px 0;
-            font-size: 14px;
-            color: #1e293b;
-            line-height: 1.6;
-        }}
-        .takeaway-box strong {{
-            color: #0f172a;
-        }}
-        .editor-note {{
-            margin-top: 32px;
-            padding: 18px 20px;
-            background: #f8fafc;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            font-size: 13px;
-            color: #64748b;
-            line-height: 1.6;
-        }}
-        .footer {{
-            background: #0f172a;
-            padding: 28px 36px;
-            text-align: center;
-            font-size: 12px;
-            color: #94a3b8;
-            line-height: 1.7;
-        }}
-        .footer strong {{
-            color: #e2e8f0;
-        }}
-        .footer-links {{
-            margin-top: 10px;
-            font-size: 11px;
-            color: #64748b;
-        }}
-        .footer-links a {{
-            color: #94a3b8;
-            text-decoration: underline;
-            margin: 0 8px;
-        }}
-        @media only screen and (max-width: 600px) {{
-            .wrapper {{
-                padding: 16px 8px;
+
+        @media only screen and (max-width: 620px) {{
+            .email-wrapper {{
+                padding: 12px 6px !important;
             }}
-            .masthead, .content, .footer {{
-                padding-left: 20px;
-                padding-right: 20px;
+
+            .email-container {{
+                width: 100% !important;
+                max-width: 100% !important;
+                border-radius: 6px !important;
             }}
-            .masthead h1 {{
-                font-size: 22px;
+
+            .header-cell {{
+                padding: 26px 20px 20px 20px !important;
             }}
-            .article-title {{
-                font-size: 19px;
+
+            .body-cell {{
+                padding: 20px 20px !important;
+            }}
+
+            .footer-cell {{
+                padding: 26px 20px !important;
+            }}
+
+            .summary-cell {{
+                padding: 18px 20px 0 20px !important;
+            }}
+
+            .article-headline {{
+                font-size: 18px !important;
+                line-height: 24px !important;
             }}
         }}
     </style>
 </head>
-<body>
-    <div class="wrapper">
-        <div class="container">
-            <div class="masthead">
-                <div class="masthead-meta">
-                    <span class="masthead-brand">LUCIDTREND</span>
-                    <span class="masthead-date">{current_date}</span>
-                </div>
-                <h1>{header}</h1>
-            </div>
-            <div class="content">
-                {news_content}
-                <div class="editor-note">
-                    <strong>LucidTrend Technical Desk:</strong> This intelligence briefing is distilled directly from primary engineering documentation, release diffs, and benchmark reports.
-                </div>
-            </div>
-            <div class="footer">
-                You are receiving this technical intelligence briefing as a verified subscriber.<br>
-                Recipient: <strong>{user_email}</strong><br>
-                <div class="footer-links">
-                    © {datetime.now().year} LucidTrend Systems. All rights reserved.
-                </div>
-            </div>
-        </div>
-    </div>
+
+<body style="margin: 0; padding: 0; background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #202124;">
+    <center class="email-wrapper" style="width: 100%; background-color: #f8f9fa; padding: 36px 12px; box-sizing: border-box;">
+        <table class="email-container" role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"
+            style="max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #dadce0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(60, 64, 67, 0.08);">
+
+            <!-- HEADER (Clean, no background colors - just Date, Header & Sub-heading) -->
+            <tr>
+                <td class="header-cell" style="padding: 36px 40px 24px 40px; border-bottom: 1px solid #e8eaed; background-color: #ffffff;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                            <td align="left" style="font-size: 12px; font-weight: 500; color: #5f6368; letter-spacing: 0.2px; text-transform: uppercase;">
+                                {current_date}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding-top: 10px;">
+                                <h1 style="margin: 0; font-size: 26px; font-weight: 500; color: #202124; letter-spacing: -0.5px; line-height: 1.25;">
+                                    Your Daily Brief - NewsPluk
+                                </h1>
+                                <p style="margin: 6px 0 0 0; font-size: 14px; color: #5f6368; line-height: 1.5; font-weight: 400;">
+                                    The day's essential developments, curated and distilled for quick reading.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            {summary_section}
+
+            <!-- STORIES / NEWS ARTICLES LIST -->
+            <tr>
+                <td class="body-cell" style="padding: 26px 40px 32px 40px;">
+                    {news_content}
+                </td>
+            </tr>
+
+            <!-- CENTERED CLEAN FOOTER -->
+            <tr>
+                <td class="footer-cell" align="center"
+                    style="padding: 28px 40px 32px 40px; background-color: #ffffff; border-top: 1px solid #e8eaed; font-size: 12px; line-height: 1.7; color: #5f6368; text-align: center;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                            <td align="center"
+                                style="font-size: 12px; color: #5f6368; line-height: 1.7; text-align: center;">
+                                You are receiving this briefing as a verified subscriber.<br>
+                                Contact Support: <a href="mailto:contact@newspluk.com" style="color: #1a73e8; text-decoration: none; font-weight: 500;">contact@newspluk.com</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td align="center"
+                                style="padding-top: 8px; font-size: 11px; color: #80868b; text-align: center;">
+                                &copy; {current_year} LucidTrend Systems. All rights reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+        </table>
+    </center>
 </body>
+
 </html>"""

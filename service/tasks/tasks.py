@@ -99,16 +99,43 @@ def generate_image_task(item: dict) -> dict:
         "author": AUTHOR
     }
 
-def _format_article_html(item: dict) -> str:
-    """Transforms article into a concise, high-deliverability editorial briefing block."""
-    title = item.get("title", "Technical Update")
-    category = item.get("category", ["Breaking News"])
-    if isinstance(category, list):
-        cat_str = category[1] if len(category) > 1 and category[1] != "Breaking News" else category[0]
-    else:
-        cat_str = str(category)
-    cat_str = cat_str.split("|")[0].strip()
+def _format_summary_bullet(item: dict) -> str:
+    """Creates a concise 1-line bullet for the top Executive Summary card."""
+    title = item.get("title", "Update").strip()
+    short_title = title.split(":")[0].strip() if ":" in title else title
+    if len(short_title) > 35:
+        short_title = short_title[:35].rsplit(" ", 1)[0]
 
+    content = item.get("content", "")
+    description = item.get("description", "").strip()
+
+    takeaway = description
+    if "## Final Takeaway" in content:
+        parts = content.split("## Final Takeaway", 1)
+        extracted = parts[1].strip().split("\n\n")[0].strip()
+        if extracted:
+            takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
+
+    # Clean takeaway and pick first sentence
+    takeaway = re.sub(r"[*`\[\]]", "", takeaway).strip()
+    first_sentence = takeaway.split(". ")[0].strip()
+    if not first_sentence.endswith("."):
+        first_sentence += "."
+
+    return f"""
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 10px;">
+        <tr>
+            <td width="18" valign="top" style="font-size: 14px; color: #1a73e8; line-height: 1.5;">&bull;</td>
+            <td style="font-size: 13.5px; line-height: 1.55; color: #3c4043;">
+                <strong style="color: #202124; font-weight: 600;">{short_title}:</strong> {first_sentence}
+            </td>
+        </tr>
+    </table>
+    """
+
+def _format_article_html(item: dict, is_last: bool = False) -> str:
+    """Transforms article into a clean, Google-styled editorial briefing block without tags."""
+    title = item.get("title", "Technical Update")
     description = item.get("description", "").strip()
     content = item.get("content", "")
 
@@ -126,29 +153,43 @@ def _format_article_html(item: dict) -> str:
     clean_summary = description
     clean_summary = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean_summary)
     clean_summary = re.sub(r"\*(.*?)\*", r"<em>\1</em>", clean_summary)
-    clean_summary = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', clean_summary)
-    clean_summary = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', clean_summary)
+    clean_summary = re.sub(r"`(.*?)`", r'<code style="background: #f1f3f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #202124;">\1</code>', clean_summary)
+    clean_summary = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #1a73e8; text-decoration: none;">\1</a>', clean_summary)
 
     clean_takeaway = takeaway
     clean_takeaway = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean_takeaway)
     clean_takeaway = re.sub(r"\*(.*?)\*", r"<em>\1</em>", clean_takeaway)
-    clean_takeaway = re.sub(r"`(.*?)`", r'<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>', clean_takeaway)
-    clean_takeaway = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>', clean_takeaway)
+    clean_takeaway = re.sub(r"`(.*?)`", r'<code style="background: #f1f3f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 13px; color: #202124;">\1</code>', clean_takeaway)
+    clean_takeaway = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" style="color: #1a73e8; text-decoration: none;">\1</a>', clean_takeaway)
+
+    border_bottom = "border-bottom: 1px solid #e8eaed; padding-bottom: 30px; margin-bottom: 30px;" if not is_last else "margin-bottom: 0;"
 
     return f"""
-    <div class="article-entry">
-        <span class="category-tag">{cat_str}</span>
-        <h2 class="article-title">{title}</h2>
-        <p class="article-summary">{clean_summary}</p>
-        <div class="takeaway-box">
-            <strong>Key Engineering Impact:</strong> {clean_takeaway}
-        </div>
-    </div>
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="{border_bottom}">
+        <tr>
+            <td>
+                <h2 class="article-headline" style="margin: 0 0 10px 0; font-size: 19px; font-weight: 600; color: #202124; line-height: 1.35; letter-spacing: -0.2px;">
+                    {title}
+                </h2>
+                <p style="margin: 0 0 14px 0; font-size: 14px; line-height: 1.65; color: #3c4043;">
+                    {clean_summary}
+                </p>
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8f9fa; border-left: 3px solid #1a73e8; border-radius: 0 6px 6px 0;">
+                    <tr>
+                        <td style="padding: 12px 16px; font-size: 13.5px; line-height: 1.55; color: #3c4043;">
+                            <span style="color: #1a73e8; font-weight: 700; margin-right: 4px;">Impact:</span>
+                            {clean_takeaway}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
     """
 
 @celery_app.task
 def send_email_task(news_json_str: str) -> bool:
-    """Dispatches high-deliverability text-only editorial briefings using bulk SMTP delivery."""
+    """Dispatches high-deliverability editorial briefings using bulk SMTP delivery."""
     mongo_service = MongoDBService()
     addresses = mongo_service.get_verified_subscribers()
     if not addresses:
@@ -161,13 +202,19 @@ def send_email_task(news_json_str: str) -> bool:
         return True
 
     first_title = news_json[0].get("title", "Daily Intelligence Briefing")
-    subject = f"LucidTrend Intelligence: {first_title}"
+    subject = f"Your Daily Brief - NewsPluk: {first_title}"
 
-    blocks = [_format_article_html(item) for item in news_json]
+    # Generate top Executive Summary bullets
+    summary_bullets = [_format_summary_bullet(item) for item in news_json]
+    summary_content = "\n".join(summary_bullets)
+
+    # Generate full article blocks
+    total_articles = len(news_json)
+    blocks = [_format_article_html(item, is_last=(i == total_articles - 1)) for i, item in enumerate(news_json)]
     news_content = "\n".join(blocks)
 
     email_entries = [
-        (email, subject, notify_subscriber_template(subject, news_content, email))
+        (email, subject, notify_subscriber_template(subject, news_content, email, summary_content))
         for email in addresses
     ]
 
