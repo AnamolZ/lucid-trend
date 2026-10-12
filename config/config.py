@@ -34,6 +34,7 @@ class RootAgentConfig:
             "title": "Compelling, Professional, High-CTR Headline",
             "description": "A crisp, engaging 2-3 sentence teaser that hooks the reader.",
             "content": "Full markdown-formatted technical article (400+ words) with ## subheadings.",
+            "source": "Primary originating news outlet or tech organization (e.g. TechCrunch, Reuters, OpenAI, The Verge, GitHub, Microsoft, Bloomberg)",
             "image_prompt": "A vivid, story-specific cinematic prompt for text-to-image synthesis. MUST describe concrete, tangible visual scenes directly representing the development (e.g. software engineer at a multi-monitor workstation with code on screen, server room, silicon microchip, or robotics lab) - NEVER generic floating abstract nodes, lines, or dots in empty space. Specify camera angle, lighting, environment, and clean 16:9 composition."
           }
         ]

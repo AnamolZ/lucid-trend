@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 """Article persistence pipeline with immediate publication and decoupled image queuing."""
 
 import json
@@ -45,11 +46,15 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
     # Assign default visual placeholders and author metadata for instant publication
     prepared_documents = []
     for item in data:
+        now_iso = datetime.now(timezone.utc).isoformat()
         doc = {
             **item,
             "image": item.get("image") or DEFAULT_IMAGE,
             "thumbnail": item.get("thumbnail") or DEFAULT_IMAGE,
             "author": item.get("author") or AUTHOR,
+            "source": item.get("source") or "NewsPluk Editorial",
+            "date": item.get("date") or now_iso,
+            "published_at": item.get("published_at") or now_iso,
         }
         prepared_documents.append(doc)
 
