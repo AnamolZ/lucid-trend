@@ -62,6 +62,15 @@ def generate_and_update_image_task(self, post_id: str, image_prompt: str = None,
         mongo_service = MongoDBService()
         mongo_service.update_post_image(post_id, image_url)
         logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with FLUX image.")
+
+        try:
+            from service.neondb.client import NeonDBService
+            neon_service = NeonDBService()
+            neon_service.update_post_image(post_id, image_url)
+            logging.info(f"[ImageWorker] Successfully updated NeonDB post '{post_id}' with FLUX image.")
+        except Exception as neon_err:
+            logging.warning(f"[ImageWorker] NeonDB image update warning for '{post_id}': {neon_err}")
+
         return True
     else:
         if self.request.retries < self.max_retries:

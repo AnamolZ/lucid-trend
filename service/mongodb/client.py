@@ -34,8 +34,50 @@ class MongoDBService:
             raise ValueError("MongoDB URI is not configured.")
         return get_shared_client(self.uri)
 
-    def insert_documents(self, documents: list) -> list:
-        """Persists article documents into collection, using upsert to prevent accidental duplicates."""
+    def delete_older_than_days(self, days: int = 7) -> int:
+        """Purges articles older than `days` based on ObjectId generation time, date, or published_at."""
+        from datetime import datetime, timezone, timedelta
+        from bson import ObjectId
+
+        client = self._get_client()
+        db = client[self.db_name]
+        col = db[self.collection_name]
+
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_iso = cutoff_dt.isoformat()
+        cutoff_oid = ObjectId.from_datetime(cutoff_dt)
+
+        logging.info(f"[MongoDB] Scanning collection '{self.collection_name}' for posts older than {days} days (cutoff: {cutoff_iso})...")
+
+        # Match any article where either _id was generated before cutoff or date/published_at is before cutoff
+        query = {
+            "$or": [
+                {"_id": {"$lt": cutoff_oid}},
+                {"date": {"$lt": cutoff_iso}},
+                {"published_at": {"$lt": cutoff_iso}}
+            ]
+        }
+
+        res = col.delete_many(query)
+        deleted_count = res.deleted_count
+        if deleted_count > 0:
+            logging.info(
+                f"[MongoDB] Purged {deleted_count} posts older than {days} days (cutoff: {cutoff_iso}) from '{self.collection_name}'."
+            )
+        else:
+            logging.info(
+                f"[MongoDB] No posts older than {days} days found in '{self.collection_name}'."
+            )
+        return deleted_count
+
+    def insert_documents(self, documents: list, purge_older_than_days: int = 7) -> list:
+        """Persists article documents into collection, purging posts older than threshold first and using upsert."""
+        if purge_older_than_days is not None and purge_older_than_days > 0:
+            try:
+                self.delete_older_than_days(days=purge_older_than_days)
+            except Exception as e:
+                logging.error(f"[MongoDB] Failed to delete old posts before insertion: {e}")
+
         if not documents:
             return []
         client = self._get_client()

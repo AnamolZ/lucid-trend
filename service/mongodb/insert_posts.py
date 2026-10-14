@@ -25,11 +25,19 @@ def _dispatch_image_task_fallback(post_id: str, prompt: str, title: str, descrip
             mongo = MongoDBService()
             mongo.update_post_image(post_id, image_url)
             logging.info(f"[ImageFallbackThread] Successfully updated post '{post_id}' in MongoDB.")
+
+            try:
+                from service.neondb.client import NeonDBService
+                neon = NeonDBService()
+                neon.update_post_image(post_id, image_url)
+                logging.info(f"[ImageFallbackThread] Successfully updated post '{post_id}' in NeonDB.")
+            except Exception as neon_err:
+                logging.warning(f"[ImageFallbackThread] NeonDB update warning for '{post_id}': {neon_err}")
     except Exception as e:
         logging.warning(f"[ImageFallbackThread] Background generation error for '{post_id}': {e}")
 
 def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
-    """Inserts articles into MongoDB immediately with default images, conditionally delegating visual generation."""
+    """Inserts articles into MongoDB and NeonDB immediately with default images, conditionally delegating visual generation."""
     if isinstance(data_or_path, list):
         data = data_or_path
     elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
@@ -58,9 +66,19 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
         }
         prepared_documents.append(doc)
 
+    # 1. MongoDB Persistence (scans & purges >7 days posts, then upserts)
     mongo_service = MongoDBService()
-    inserted_ids = mongo_service.insert_documents(prepared_documents)
-    logging.info(f"[InsertPosts] Published {len(prepared_documents)} articles to MongoDB with placeholder images.")
+    inserted_ids = mongo_service.insert_documents(prepared_documents, purge_older_than_days=7)
+    logging.info(f"[InsertPosts] Published {len(prepared_documents)} articles to MongoDB.")
+
+    # 2. Neon PostgreSQL Persistence (scans & purges >7 days posts, then upserts)
+    try:
+        from service.neondb.client import NeonDBService
+        neon_service = NeonDBService()
+        neon_ids = neon_service.insert_documents(prepared_documents, purge_older_than_days=7)
+        logging.info(f"[InsertPosts] Published {len(neon_ids)} articles to NeonDB.")
+    except Exception as neon_err:
+        logging.error(f"[InsertPosts] NeonDB insertion failed: {neon_err}")
 
     # Dispatch asynchronous image synthesis tasks only if with_image is enabled
     if with_image:
