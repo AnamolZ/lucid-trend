@@ -21,7 +21,7 @@ class NeonDBService:
             raise ValueError("NEON_DB connection string is not configured.")
         return psycopg2.connect(self.dsn)
 
-    def delete_older_than_days(self, days: int = 7) -> int:
+    def delete_older_than_days(self, days: int = 14) -> int:
         """Purges articles older than `days` based on created_at timestamp."""
         if not self.dsn:
             logging.warning("[NeonDB] NEON_DB not configured. Skipping purge.")
@@ -49,7 +49,7 @@ class NeonDBService:
             raise
         return deleted_count
 
-    def insert_documents(self, documents: list, purge_older_than_days: int = 7) -> list:
+    def insert_documents(self, documents: list, purge_older_than_days: int = 14) -> list:
         """Persists article documents into Neon 'posts' table, purging posts older than threshold first."""
         if not self.dsn:
             logging.warning("[NeonDB] NEON_DB not configured. Skipping insert.")

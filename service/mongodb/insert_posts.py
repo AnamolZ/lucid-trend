@@ -66,16 +66,16 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
         }
         prepared_documents.append(doc)
 
-    # 1. MongoDB Persistence (scans & purges >7 days posts, then upserts)
+    # 1. MongoDB Persistence (scans & purges >14 days posts, then upserts)
     mongo_service = MongoDBService()
-    inserted_ids = mongo_service.insert_documents(prepared_documents, purge_older_than_days=7)
+    inserted_ids = mongo_service.insert_documents(prepared_documents, purge_older_than_days=14)
     logging.info(f"[InsertPosts] Published {len(prepared_documents)} articles to MongoDB.")
 
-    # 2. Neon PostgreSQL Persistence (scans & purges >7 days posts, then upserts)
+    # 2. Neon PostgreSQL Persistence (scans & purges >14 days posts, then upserts)
     try:
         from service.neondb.client import NeonDBService
         neon_service = NeonDBService()
-        neon_ids = neon_service.insert_documents(prepared_documents, purge_older_than_days=7)
+        neon_ids = neon_service.insert_documents(prepared_documents, purge_older_than_days=14)
         logging.info(f"[InsertPosts] Published {len(neon_ids)} articles to NeonDB.")
     except Exception as neon_err:
         logging.error(f"[InsertPosts] NeonDB insertion failed: {neon_err}")

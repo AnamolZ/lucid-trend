@@ -34,7 +34,7 @@ class MongoDBService:
             raise ValueError("MongoDB URI is not configured.")
         return get_shared_client(self.uri)
 
-    def delete_older_than_days(self, days: int = 7) -> int:
+    def delete_older_than_days(self, days: int = 14) -> int:
         """Purges articles older than `days` based on ObjectId generation time, date, or published_at."""
         from datetime import datetime, timezone, timedelta
         from bson import ObjectId
@@ -70,7 +70,7 @@ class MongoDBService:
             )
         return deleted_count
 
-    def insert_documents(self, documents: list, purge_older_than_days: int = 7) -> list:
+    def insert_documents(self, documents: list, purge_older_than_days: int = 14) -> list:
         """Persists article documents into collection, purging posts older than threshold first and using upsert."""
         if purge_older_than_days is not None and purge_older_than_days > 0:
             try:
