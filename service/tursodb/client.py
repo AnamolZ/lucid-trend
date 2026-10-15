@@ -96,9 +96,9 @@ class TursoDBService:
         upsert_query = """
             INSERT INTO posts (
                 id, title, slug, description, content,
-                image, thumbnail, category, author, source, published_at
+                image, thumbnail, image_prompt, category, author, source, published_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 slug = excluded.slug,
@@ -106,6 +106,7 @@ class TursoDBService:
                 content = excluded.content,
                 image = excluded.image,
                 thumbnail = excluded.thumbnail,
+                image_prompt = excluded.image_prompt,
                 category = excluded.category,
                 author = excluded.author,
                 source = excluded.source,
@@ -120,6 +121,7 @@ class TursoDBService:
             content = doc.get("content", "")
             image = doc.get("image", "")
             thumbnail = doc.get("thumbnail", "")
+            image_prompt = doc.get("image_prompt") or ""
             category = json.dumps(doc.get("category", ["General"])) if isinstance(doc.get("category"), list) else str(doc.get("category") or "General")
             author = json.dumps(doc.get("author")) if isinstance(doc.get("author"), dict) else str(doc.get("author") or "")
             source = doc.get("source", "NewsPluk Editorial")
@@ -130,7 +132,7 @@ class TursoDBService:
                 "sql": upsert_query,
                 "args": [
                     post_id, title, slug, description, content,
-                    image, thumbnail, category, author, source, published_at
+                    image, thumbnail, image_prompt, category, author, source, published_at
                 ]
             })
             inserted_ids.append(post_id)
