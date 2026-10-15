@@ -10,7 +10,6 @@ from service.image_helper.get_image import huggingface_image
 from service.emails.sender import send_bulk_emails, send_noreply_email
 from service.mongodb.client import MongoDBService
 from service.tursodb.client import TursoDBService
-from service.mongodb.insert_posts import compress_image_base64_for_mongo
 from template.notify_subscriber import notify_subscriber_template
 from config.logging_config import setup_logging
 
@@ -47,7 +46,7 @@ celery_app.conf.update(
 
 @celery_app.task(bind=True, max_retries=3)
 def generate_and_update_image_task(self, post_id: str, image_prompt: str = None, title: str = None, description: str = None, category: list = None) -> bool:
-    """Synthesizes high-precision FLUX visual assets and updates Turso (serving) & MongoDB (compressed backup)."""
+    """Synthesizes high-precision FLUX visual assets and updates Turso & MongoDB in full uncompressed quality."""
     attempt_num = self.request.retries + 1
     logging.info(f"[ImageWorker] Initiated FLUX task for post '{post_id}' (attempt {attempt_num}/4)...")
 
@@ -68,12 +67,11 @@ def generate_and_update_image_task(self, post_id: str, image_prompt: str = None,
         except Exception as turso_err:
             logging.error(f"[ImageWorker] Turso update error for '{post_id}': {turso_err}")
 
-        # 2. Update MongoDB (Backup - Compressed < 500KB)
+        # 2. Update MongoDB (Backup - Full Original Quality)
         try:
-            mongo_img = compress_image_base64_for_mongo(image_url, 400 * 1024)
             mongo_service = MongoDBService()
-            mongo_service.update_post_image(post_id, mongo_img)
-            logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with compressed image.")
+            mongo_service.update_post_image(post_id, image_url)
+            logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with FLUX image.")
         except Exception as mongo_err:
             logging.error(f"[ImageWorker] MongoDB update error for '{post_id}': {mongo_err}")
 
