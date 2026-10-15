@@ -5,6 +5,9 @@ import json
 import os
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
+
+_fallback_image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ImgWorker")
 
 from service.tasks.tasks import generate_and_update_image_task, AUTHOR, DEFAULT_IMAGE
 from service.mongodb.client import MongoDBService
@@ -105,12 +108,10 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
                 logging.warning(
                     f"[InsertPosts] Celery broker offline ({celery_err}). Spawning background thread fallback..."
                 )
-                thread = threading.Thread(
-                    target=_dispatch_image_task_fallback,
-                    args=(post_id, image_prompt, title, description, category),
-                    daemon=True
+                _fallback_image_executor.submit(
+                    _dispatch_image_task_fallback,
+                    post_id, image_prompt, title, description, category
                 )
-                thread.start()
     else:
         logging.info("[InsertPosts] Image synthesis skipped (--without image active).")
 

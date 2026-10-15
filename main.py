@@ -111,7 +111,12 @@ async def run_pipeline() -> bool:
         if existing_posts:
             duplicates = await safe_execute("DuplicateDetection", detect_duplicates, existing_posts)
             if duplicates:
-                await safe_execute("RemoveDuplicates", mongo_service.remove_duplicate_posts, duplicates)
+                await safe_execute("RemoveMongoDuplicates", mongo_service.remove_duplicate_posts, duplicates)
+                try:
+                    turso_service = TursoDBService()
+                    await safe_execute("RemoveTursoDuplicates", turso_service.remove_duplicate_posts, duplicates)
+                except Exception as turso_dup_err:
+                    logging.error(f"[DuplicateDetection] Turso duplicate removal error: {turso_dup_err}")
             else:
                 logging.info("[DuplicateDetection] Database clean: 0 duplicate articles detected.")
 

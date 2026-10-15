@@ -152,3 +152,24 @@ class TursoDBService:
         sql = "UPDATE posts SET image = ?, thumbnail = ? WHERE id = ?;"
         self.execute(sql, [image_url, image_url, post_id])
         logging.info(f"[TursoDB] Updated image for post '{post_id}'.")
+    def remove_duplicate_posts(self, duplicate_ids: list) -> int:
+        """Purges duplicate records from Turso database while preserving original records."""
+        if not duplicate_ids:
+            return 0
+
+        statements = []
+        for post_id in duplicate_ids:
+            if not post_id:
+                continue
+            statements.append({
+                "sql": "DELETE FROM posts WHERE id = ?",
+                "args": [str(post_id)]
+            })
+
+        if not statements:
+            return 0
+
+        res = self.execute_batch(statements)
+        logging.info(f"[TursoDB] Purged {len(statements)} duplicate posts from Turso.")
+        return len(statements)
+

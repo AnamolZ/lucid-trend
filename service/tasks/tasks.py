@@ -138,3 +138,23 @@ def send_email_task(news_json_str: str) -> bool:
     except Exception as e:
         logging.error(f"[EmailWorker] Error processing email task: {e}")
         return False
+@celery_app.task
+def send_push_notifications_batch_task(news_json_str: str) -> bool:
+    """Dispatches high-priority Firebase FCM push notifications for published articles."""
+    try:
+        from service.notifications.push_service import send_article_push
+        articles = json.loads(news_json_str)
+        if not isinstance(articles, list):
+            logging.error("[PushWorker] Invalid payload format. Expected JSON array.")
+            return False
+
+        success_count = 0
+        for art in articles:
+            if send_article_push(art):
+                success_count += 1
+        logging.info(f"[PushWorker] Successfully dispatched FCM push for {success_count}/{len(articles)} articles.")
+        return success_count > 0
+    except Exception as e:
+        logging.error(f"[PushWorker] Error processing push notification batch task: {e}")
+        return False
+
