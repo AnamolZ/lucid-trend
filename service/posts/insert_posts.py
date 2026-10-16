@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -91,7 +92,10 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
     except Exception as turso_err:
         logging.error(f"[InsertPosts] Turso insertion failed: {turso_err}")
 
-    # 2. Dispatch background generation (Visuals + Audio Narration)
+    # 2. Dispatch generation (Visuals + Audio Narration)
+    futures = []
+    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS")
+
     for item in prepared_documents:
         post_id = item.get("id")
         image_prompt = item.get("image_prompt")
@@ -103,22 +107,30 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
         if not post_id:
             continue
 
-        if with_image:
+        if with_image and use_celery:
             try:
                 from service.tasks.tasks import generate_and_update_image_task
                 generate_and_update_image_task.delay(post_id, image_prompt, title, description, category)
                 logging.info(f"[InsertPosts] Queued Celery image task for post '{post_id}'.")
             except Exception:
-                _fallback_executor.submit(
+                futures.append(_fallback_executor.submit(
                     _dispatch_visual_and_audio_task,
                     post_id, image_prompt, title, description, category, content
-                )
+                ))
         else:
-            # When --without image is active, still synthesize audio & bake
-            _fallback_executor.submit(
+            futures.append(_fallback_executor.submit(
                 _dispatch_visual_and_audio_task,
-                post_id, None, title, description, category, content
-            )
+                post_id, image_prompt if with_image else None, title, description, category, content
+            ))
+
+    # In GitHub Actions or single-run CLI mode, wait for asset tasks to finish before continuing
+    if futures and (os.getenv("GITHUB_ACTIONS") or "--once" in sys.argv):
+        logging.info(f"[InsertPosts] Awaiting completion of {len(futures)} asset generation tasks...")
+        for f in futures:
+            try:
+                f.result(timeout=90)
+            except Exception as e:
+                logging.warning(f"[InsertPosts] Asset generation error: {e}")
 
     # 3. Immediate Initial Static Payload Bake
     try:
