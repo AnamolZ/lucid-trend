@@ -23,3 +23,6 @@ temp/
 # Firebase & Cloud Credentials
 *firebase*.json
 *-adminsdk-*.json
+
+# Generated static outputs (baked into news-pluk)
+public/

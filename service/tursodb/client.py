@@ -1,4 +1,4 @@
-﻿"""Turso libSQL persistence service for managing articles and subscribers."""
+"""Turso libSQL persistence service for managing articles and subscribers."""
 
 import os
 import json
@@ -96,9 +96,9 @@ class TursoDBService:
         upsert_query = """
             INSERT INTO posts (
                 id, title, slug, description, content,
-                image, thumbnail, image_prompt, category, author, source, published_at
+                image, thumbnail, image_prompt, audio_url, category, author, source, published_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 slug = excluded.slug,
@@ -107,6 +107,7 @@ class TursoDBService:
                 image = excluded.image,
                 thumbnail = excluded.thumbnail,
                 image_prompt = excluded.image_prompt,
+                audio_url = CASE WHEN excluded.audio_url != '' THEN excluded.audio_url ELSE posts.audio_url END,
                 category = excluded.category,
                 author = excluded.author,
                 source = excluded.source,
@@ -122,6 +123,7 @@ class TursoDBService:
             image = doc.get("image", "")
             thumbnail = doc.get("thumbnail", "")
             image_prompt = doc.get("image_prompt") or ""
+            audio_url = doc.get("audio_url") or ""
             category = json.dumps(doc.get("category", ["General"])) if isinstance(doc.get("category"), list) else str(doc.get("category") or "General")
             author = json.dumps(doc.get("author")) if isinstance(doc.get("author"), dict) else str(doc.get("author") or "")
             source = doc.get("source", "NewsPluk Editorial")
@@ -132,7 +134,7 @@ class TursoDBService:
                 "sql": upsert_query,
                 "args": [
                     post_id, title, slug, description, content,
-                    image, thumbnail, image_prompt, category, author, source, published_at
+                    image, thumbnail, image_prompt, audio_url, category, author, source, published_at
                 ]
             })
             inserted_ids.append(post_id)
@@ -152,6 +154,95 @@ class TursoDBService:
         sql = "UPDATE posts SET image = ?, thumbnail = ? WHERE id = ?;"
         self.execute(sql, [image_url, image_url, post_id])
         logging.info(f"[TursoDB] Updated image for post '{post_id}'.")
+
+    def update_post_audio(self, post_id: str, audio_url: str):
+        """Updates the audio stream URL for a post."""
+        if not self.http_url:
+            return
+        sql = "UPDATE posts SET audio_url = ? WHERE id = ?;"
+        self.execute(sql, [audio_url, post_id])
+        logging.info(f"[TursoDB] Updated audio_url for post '{post_id}'.")
+
+    def fetch_all_posts(self) -> list:
+        """Retrieves lightweight article metadata (id, title, description) for duplicate detection."""
+        if not self.http_url:
+            return []
+        sql = "SELECT id, title, description FROM posts ORDER BY published_at DESC LIMIT 100;"
+        res = self.execute(sql)
+        posts = []
+        try:
+            results = res.get("results", [])
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                cols = [c["name"] for c in results[0].get("response", {}).get("result", {}).get("cols", [])]
+                for row in rows:
+                    post_dict = {}
+                    for col_idx, col_name in enumerate(cols):
+                        val_obj = row[col_idx]
+                        post_dict[col_name] = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                    posts.append(post_dict)
+        except Exception as e:
+            logging.error(f"[TursoDB] Error fetching posts: {e}")
+        logging.info(f"[TursoDB] Fetched {len(posts)} existing posts.")
+        return posts
+
+    def fetch_recent_posts_for_export(self, limit: int = 50) -> list:
+        """Retrieves full article objects sorted by published_at DESC for static JSON baking."""
+        if not self.http_url:
+            return []
+        sql = """
+            SELECT id, title, slug, description, content, image, thumbnail,
+                   image_prompt, audio_url, category, author, source, published_at, created_at
+            FROM posts
+            ORDER BY published_at DESC, id DESC
+            LIMIT ?;
+        """
+        res = self.execute(sql, [limit])
+        posts = []
+        try:
+            results = res.get("results", [])
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                cols = [c["name"] for c in results[0].get("response", {}).get("result", {}).get("cols", [])]
+                for row in rows:
+                    post_dict = {}
+                    for col_idx, col_name in enumerate(cols):
+                        val_obj = row[col_idx]
+                        val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                        if col_name in ("category", "author") and isinstance(val, str) and (val.startswith("[") or val.startswith("{")):
+                            try:
+                                post_dict[col_name] = json.loads(val)
+                            except Exception:
+                                post_dict[col_name] = val
+                        else:
+                            post_dict[col_name] = val
+                    posts.append(post_dict)
+        except Exception as e:
+            logging.error(f"[TursoDB] Error fetching posts for export: {e}")
+        return posts
+
+    def get_verified_subscribers(self) -> list:
+        """Queries and returns list of verified subscriber email addresses from Turso."""
+        if not self.http_url:
+            return []
+        sql = "SELECT email FROM notification_addresses WHERE is_verified = 1;"
+        try:
+            res = self.execute(sql)
+            results = res.get("results", [])
+            emails = []
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                for r in rows:
+                    if r and len(r) > 0:
+                        val = r[0].get("value") if isinstance(r[0], dict) else r[0]
+                        if val:
+                            emails.append(str(val))
+            logging.info(f"[TursoDB] Found {len(emails)} verified subscribers.")
+            return emails
+        except Exception as e:
+            logging.error(f"[TursoDB] Error fetching verified subscribers: {e}")
+            return []
+
     def remove_duplicate_posts(self, duplicate_ids: list) -> int:
         """Purges duplicate records from Turso database while preserving original records."""
         if not duplicate_ids:

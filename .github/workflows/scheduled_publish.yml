@@ -1,0 +1,84 @@
+name: Autonomous NewsPluk Publishing Engine
+
+on:
+  schedule:
+    # 04:50 UTC & 16:50 UTC (Corresponds to ~05:05 & ~17:05 Asia/Kathmandu)
+    - cron: '50 23,11 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: publish-pipeline
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Scout, Synthesize, Bake & Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out lucid-trend
+        uses: actions/checkout@v4
+        with:
+          path: lucid-trend
+
+      - name: Check out news-pluk (Static Delivery Platform)
+        uses: actions/checkout@v4
+        with:
+          repository: AnamolZ/news-pluk
+          path: news-pluk
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Install uv (Fast Package Manager)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "lucid-trend/uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install Dependencies
+        working-directory: lucid-trend
+        run: uv sync --frozen
+
+      - name: Execute Publishing Pipeline
+        working-directory: lucid-trend
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+          HUGGING_FACE_TOKENS: ${{ secrets.HUGGING_FACE_TOKENS }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TZ: Asia/Kathmandu
+        run: |
+          uv run python main.py --once
+
+      - name: Bake Static CDN Payloads & Audio
+        working-directory: lucid-trend
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          uv run python -c "from service.export.static_baker import bake_static_payloads; res = bake_static_payloads(); print('Baked payloads:', res)"
+
+      - name: Deploy Flat CDN Assets to news-pluk
+        working-directory: news-pluk
+        run: |
+          git config --global user.name "NewsPluk Publishing Bot"
+          git config --global user.email "bot@newspluk.com"
+          git add public/api public/images public/audio
+          if git diff --staged --quiet; then
+            echo "No new static dispatches to deploy."
+          else
+            git commit -m "chore(cdn): publish new editorial dispatches and baked audio [skip ci]"
+            git push origin main
+            echo "Successfully deployed new static dispatches to Vercel CDN Edge!"
+          fi

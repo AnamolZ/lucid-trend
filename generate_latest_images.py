@@ -2,7 +2,6 @@ import sys
 import logging
 from service.image_helper.get_image import huggingface_image
 from service.tursodb.client import TursoDBService
-from service.mongodb.client import MongoDBService
 
 logging.basicConfig(level=logging.INFO)
 
@@ -22,7 +21,6 @@ posts = [
 ]
 
 turso = TursoDBService()
-mongo = MongoDBService()
 
 for p in posts:
     print(f"\n==========================================")
@@ -37,9 +35,6 @@ for p in posts:
         # Update Turso
         turso_ok = turso.update_post_image(p["id"], img)
         print(f"Turso update status for {p['id']}: {turso_ok}")
-        # Update MongoDB (without compression, full uncompressed quality as requested)
-        mongo_ok = mongo.update_post_image(p["id"], img)
-        print(f"MongoDB update status for {p['id']}: {mongo_ok}")
     else:
         print(f"Failed to generate image for {p['id']}")
 

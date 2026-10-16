@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 from engine.root_agent import RootAgentEngine
 from service.data_cleaning.gemini import fast_extract, detect_duplicates
 from service.image_helper.get_image import huggingface_image, hf_coordinator
-from service.mongodb.client import MongoDBService
-from service.mongodb.insert_posts import insert_posts
+from service.tursodb.client import TursoDBService
+from service.posts.insert_posts import insert_posts
 from service.emails.notify_subscriber import notify_subscribers
 from service.cleanup.temp_cleaner import ensure_temp_dir, clean_temp_directory, TEMP_DIR
 from service.scheduler.schedule_manager import get_active_schedule, reshuffle_schedule
@@ -84,7 +84,7 @@ app.mount("/temp", StaticFiles(directory=TEMP_DIR), name="temp")
 
 class PipelineRequest(BaseModel):
     """Execution parameters for modular pipeline runs."""
-    with_db: bool = Field(default=True, description="Whether to write articles to MongoDB")
+    with_db: bool = Field(default=True, description="Whether to write articles to Turso Master DB and bake static CDN payloads")
     with_email: bool = Field(default=True, description="Whether to dispatch newsletter emails")
     with_image: bool = Field(default=True, description="Whether to trigger async image generation")
     research_prompt: Optional[str] = Field(
@@ -219,7 +219,7 @@ async def run_pipeline_endpoint(req: PipelineRequest):
     inserted_docs = []
     if req.with_db:
         inserted_docs = await asyncio.to_thread(insert_posts, articles, with_image=req.with_image)
-        logging.info(f"[API Pipeline] Inserted {len(inserted_docs)} posts into MongoDB.")
+        logging.info(f"[API Pipeline] Published {len(inserted_docs)} posts to Turso Master DB & baked static CDN payloads.")
 
     email_dispatched = False
     if req.with_email:

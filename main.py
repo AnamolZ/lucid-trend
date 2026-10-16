@@ -15,8 +15,9 @@ from dotenv import load_dotenv
 
 from engine.root_agent import RootAgentEngine
 from service.data_cleaning.gemini import fast_extract, detect_duplicates
-from service.mongodb.client import MongoDBService
-from service.mongodb.insert_posts import insert_posts
+from service.tursodb.client import TursoDBService
+from service.posts.insert_posts import insert_posts
+from service.export.static_baker import bake_static_payloads
 from service.emails.notify_subscriber import notify_subscribers
 from service.cleanup.temp_cleaner import clean_temp_directory
 from config.logging_config import setup_logging
@@ -36,7 +37,8 @@ except Exception as e:
 load_dotenv()
 
 REQUIRED_ENV = [
-    "MONGO_URI",
+    "TURSO_DATABASE_URL",
+    "TURSO_AUTH_TOKEN",
     "SMTP_SERVER",
     "SMTP_USER",
     "SMTP_PASSWORD"
@@ -106,17 +108,13 @@ async def run_pipeline() -> bool:
 
         await safe_execute("NotifySubscribers", notify_subscribers, articles)
 
-        mongo_service = MongoDBService()
-        existing_posts = await safe_execute("FetchPosts", mongo_service.fetch_all_posts)
+        turso_service = TursoDBService()
+        existing_posts = await safe_execute("FetchPosts", turso_service.fetch_all_posts)
         if existing_posts:
             duplicates = await safe_execute("DuplicateDetection", detect_duplicates, existing_posts)
             if duplicates:
-                await safe_execute("RemoveMongoDuplicates", mongo_service.remove_duplicate_posts, duplicates)
-                try:
-                    turso_service = TursoDBService()
-                    await safe_execute("RemoveTursoDuplicates", turso_service.remove_duplicate_posts, duplicates)
-                except Exception as turso_dup_err:
-                    logging.error(f"[DuplicateDetection] Turso duplicate removal error: {turso_dup_err}")
+                await safe_execute("RemoveTursoDuplicates", turso_service.remove_duplicate_posts, duplicates)
+                await safe_execute("RebakeStaticPayloads", bake_static_payloads)
             else:
                 logging.info("[DuplicateDetection] Database clean: 0 duplicate articles detected.")
 
@@ -168,7 +166,12 @@ if __name__ == "__main__":
     api_thread = threading.Thread(target=start_api_server, daemon=True)
     api_thread.start()
 
-    if "--now" in sys.argv or "--run-now" in sys.argv:
+    if "--once" in sys.argv:
+        logging.info("[CLI] Executing single autonomous publish run (--once flag provided)...")
+        asyncio.run(run_daily_cycle())
+        logging.info("[CLI] Autonomous single run completed. Exiting.")
+        sys.exit(0)
+    elif "--now" in sys.argv or "--run-now" in sys.argv:
         logging.info("[CLI] Executing immediate on-demand run (--now flag provided)...")
         asyncio.run(run_daily_cycle())
         start_scheduler()

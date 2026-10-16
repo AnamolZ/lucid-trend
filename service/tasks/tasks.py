@@ -1,4 +1,4 @@
-﻿"""Asynchronous Celery task definitions for image synthesis and email newsletter distribution."""
+"""Asynchronous Celery task definitions for image synthesis and email newsletter distribution."""
 
 import os
 import re
@@ -6,17 +6,17 @@ import logging
 from celery import Celery
 from dotenv import load_dotenv
 
+import json
 from service.image_helper.get_image import huggingface_image
 from service.emails.sender import send_bulk_emails, send_noreply_email
-from service.mongodb.client import MongoDBService
 from service.tursodb.client import TursoDBService
+from service.export.static_baker import bake_static_payloads
 from template.notify_subscriber import notify_subscriber_template
 from config.logging_config import setup_logging
 
 setup_logging()
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI")
 HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKENS") or os.getenv("HUGGING_FACE_TOKEN") or os.getenv("HF_TOKEN")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_USER = os.getenv("SMTP_USER")
@@ -46,7 +46,7 @@ celery_app.conf.update(
 
 @celery_app.task(bind=True, max_retries=3)
 def generate_and_update_image_task(self, post_id: str, image_prompt: str = None, title: str = None, description: str = None, category: list = None) -> bool:
-    """Synthesizes high-precision FLUX visual assets and updates Turso & MongoDB in full uncompressed quality."""
+    """Synthesizes high-precision FLUX visual assets and updates Turso in full uncompressed quality."""
     attempt_num = self.request.retries + 1
     logging.info(f"[ImageWorker] Initiated FLUX task for post '{post_id}' (attempt {attempt_num}/4)...")
 
@@ -59,21 +59,15 @@ def generate_and_update_image_task(self, post_id: str, image_prompt: str = None,
     )
 
     if image_url:
-        # 1. Update Turso DB (Serving - Full Original Quality)
+        # Update Turso DB (Single Master DB)
         try:
             turso_service = TursoDBService()
             turso_service.update_post_image(post_id, image_url)
             logging.info(f"[ImageWorker] Successfully updated Turso DB post '{post_id}' with FLUX image.")
+            # Trigger static edge re-bake with the new visual
+            bake_static_payloads()
         except Exception as turso_err:
             logging.error(f"[ImageWorker] Turso update error for '{post_id}': {turso_err}")
-
-        # 2. Update MongoDB (Backup - Full Original Quality)
-        try:
-            mongo_service = MongoDBService()
-            mongo_service.update_post_image(post_id, image_url)
-            logging.info(f"[ImageWorker] Successfully updated MongoDB post '{post_id}' with FLUX image.")
-        except Exception as mongo_err:
-            logging.error(f"[ImageWorker] MongoDB update error for '{post_id}': {mongo_err}")
 
         return True
     else:
@@ -115,8 +109,8 @@ def generate_image_task(item: dict) -> dict:
 @celery_app.task
 def send_email_task(news_json_str: str) -> bool:
     """Dispatches high-deliverability editorial briefings using bulk SMTP delivery."""
-    mongo_service = MongoDBService()
-    addresses = mongo_service.get_verified_subscribers()
+    turso_service = TursoDBService()
+    addresses = turso_service.get_verified_subscribers()
     if not addresses:
         logging.info("[EmailWorker] No verified subscribers found.")
         return True
