@@ -92,7 +92,9 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
                 notification=messaging.AndroidNotification(
                     channel_id="dispatches",
                     sound="default",
-                    priority="high"
+                    priority="high",
+                    default_vibrate_timings=True,
+                    visibility="public"
                 )
             ),
             apns=messaging.APNSConfig(

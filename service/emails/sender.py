@@ -29,27 +29,47 @@ def send_noreply_email(to_email: str, subject: str, body_html: str, smtp_server:
         logging.error(f"[EmailSender] Failed to send email to {to_email}: {e}")
         return False
 
-def send_bulk_emails(email_entries: list, smtp_server: str, smtp_user: str, smtp_password: str) -> int:
+import os
+
+def send_bulk_emails(email_entries_or_addresses: list, subject_or_server=None, body_or_user=None, smtp_password: str = None, smtp_server: str = None, smtp_user: str = None) -> int:
     """Dispatches emails to multiple recipients reusing a single authenticated SMTP session."""
-    if not email_entries:
+    if not email_entries_or_addresses:
         return 0
 
-    smtp_port = 587
+    entries = []
+    if isinstance(email_entries_or_addresses[0], (list, tuple)):
+        entries = email_entries_or_addresses
+        server_host = smtp_server or subject_or_server or os.getenv("SMTP_SERVER")
+        user = smtp_user or body_or_user or os.getenv("SMTP_USER")
+        password = smtp_password or os.getenv("SMTP_PASSWORD")
+    else:
+        subject = subject_or_server or "NewsPluk Technical Dispatch"
+        html = body_or_user or ""
+        entries = [(addr, subject, html) for addr in email_entries_or_addresses]
+        server_host = smtp_server or os.getenv("SMTP_SERVER")
+        user = smtp_user or os.getenv("SMTP_USER")
+        password = smtp_password or os.getenv("SMTP_PASSWORD")
+
+    if not server_host or not user or not password:
+        logging.warning("[EmailSender] Missing SMTP credentials (SMTP_SERVER, SMTP_USER, or SMTP_PASSWORD). Skipping email dispatch.")
+        return 0
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
     sender_email = "no-reply@newspluk.com"
     sender_name = "NewsPluk Team"
     sent_count = 0
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+        server = smtplib.SMTP(server_host, smtp_port, timeout=30)
         server.starttls()
-        server.login(smtp_user, smtp_password)
+        server.login(user, password)
 
-        for to_email, subject, body_html in email_entries:
+        for to_email, subj, body_html in entries:
             try:
                 msg = MIMEMultipart()
                 msg['From'] = f"{sender_name} <{sender_email}>"
                 msg['To'] = to_email
-                msg['Subject'] = subject
+                msg['Subject'] = subj
                 msg.attach(MIMEText(body_html, 'html'))
 
                 server.sendmail(sender_email, to_email, msg.as_string())

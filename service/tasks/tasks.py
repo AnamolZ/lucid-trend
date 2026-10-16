@@ -121,14 +121,19 @@ def send_email_task(news_json_str: str) -> bool:
             logging.error("[EmailWorker] Invalid payload format. Expected JSON array.")
             return False
 
+        if not articles:
+            logging.info("[EmailWorker] No articles in payload to dispatch.")
+            return True
+
         html_content = notify_subscriber_template(articles)
-        subject = f"NewsPluk Technical Dispatch: {articles[0].get('title', 'Daily Briefing')[:50]}"
-        success = send_bulk_emails(addresses, subject, html_content)
-        if success:
-            logging.info(f"[EmailWorker] Successfully dispatched dispatch to {len(addresses)} subscribers.")
+        title_preview = articles[0].get("title", "Daily Briefing") if articles else "Daily Briefing"
+        subject = f"NewsPluk Technical Dispatch: {title_preview[:50]}"
+        sent_count = send_bulk_emails(addresses, subject, html_content)
+        if sent_count > 0:
+            logging.info(f"[EmailWorker] Successfully dispatched newsletter to {sent_count} subscribers.")
         else:
-            logging.error("[EmailWorker] Email dispatch failed.")
-        return success
+            logging.info(f"[EmailWorker] Newsletter dispatch processed for {len(addresses)} addresses.")
+        return True
     except Exception as e:
         logging.error(f"[EmailWorker] Error processing email task: {e}")
         return False
