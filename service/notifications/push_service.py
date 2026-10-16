@@ -1,7 +1,11 @@
 """Firebase Cloud Messaging (FCM) push notification service for mobile dispatch broadcasting."""
 
 import os
+import json
+import base64
 import logging
+import urllib.request
+import urllib.error
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,96 +27,154 @@ def init_firebase() -> bool:
             _firebase_initialized = True
             return True
 
-        # Check for raw JSON in FIREBASE_SERVICE_ACCOUNT env var
-        import json
-        raw_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
-        if raw_json and str(raw_json).strip().startswith("{"):
-            try:
-                account_info = json.loads(raw_json)
+        # 1. Check for raw or Base64 JSON in FIREBASE_SERVICE_ACCOUNT env var
+        raw_env = (
+            os.getenv("FIREBASE_SERVICE_ACCOUNT")
+            or os.getenv("FIREBASE_SERVICE_ACCOUNT_B64")
+            or os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64")
+        )
+        if raw_env:
+            raw_str = str(raw_env).strip()
+            account_info = None
+
+            # Attempt A: Direct JSON string
+            if raw_str.startswith("{") and raw_str.endswith("}"):
+                try:
+                    account_info = json.loads(raw_str)
+                except Exception as parse_err:
+                    logging.warning(f"[Firebase] Failed to parse raw FIREBASE_SERVICE_ACCOUNT JSON: {parse_err}")
+
+            # Attempt B: Base64-encoded JSON string
+            if not account_info:
+                try:
+                    decoded = base64.b64decode(raw_str).decode("utf-8")
+                    if decoded.strip().startswith("{"):
+                        account_info = json.loads(decoded)
+                except Exception:
+                    pass
+
+            if account_info and isinstance(account_info, dict) and "project_id" in account_info:
                 cred = credentials.Certificate(account_info)
                 firebase_admin.initialize_app(cred)
                 _firebase_initialized = True
-                logging.info("[Firebase] Initialized Firebase Admin SDK successfully from FIREBASE_SERVICE_ACCOUNT env string.")
+                logging.info("[Firebase] Initialized Firebase Admin SDK successfully from FIREBASE_SERVICE_ACCOUNT environment secret.")
                 return True
-            except Exception as j_err:
-                logging.warning(f"[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT json: {j_err}")
 
-        # Check candidate locations for service account key file
+        # 2. Check candidate filesystem locations for service account key file
         custom_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
         candidates = []
         if custom_path:
             candidates.append(custom_path if os.path.isabs(custom_path) else os.path.join(base_dir, custom_path))
+
         candidates.extend([
             os.path.join(base_dir, "firebase-service-account.json"),
             os.path.join(base_dir, "newspluk-firebase-adminsdk-fbsvc-297b860de4.json"),
             os.path.join(os.getcwd(), "firebase-service-account.json"),
+            os.path.join(base_dir, "..", "news-pluk", "api", "newspluk-firebase-adminsdk-fbsvc-297b860de4.json"),
+            os.path.join(base_dir, "..", "news-pluk", "newspluk-firebase-adminsdk-fbsvc-297b860de4.json"),
         ])
 
         key_path = next((p for p in candidates if os.path.exists(p)), None)
-        if not key_path:
-            logging.warning("[Firebase] Service account JSON not found. Mobile push notifications disabled.")
-            return False
+        if key_path:
+            cred = credentials.Certificate(key_path)
+            firebase_admin.initialize_app(cred)
+            _firebase_initialized = True
+            logging.info(f"[Firebase] Initialized Firebase Admin SDK successfully with '{os.path.basename(key_path)}'.")
+            return True
 
-        cred = credentials.Certificate(key_path)
-        firebase_admin.initialize_app(cred)
-        _firebase_initialized = True
-        logging.info(f"[Firebase] Initialized Firebase Admin SDK successfully with '{os.path.basename(key_path)}'.")
-        return True
+        logging.warning("[Firebase] Service account JSON not found in environment or filesystem. Direct SDK push disabled.")
+        return False
 
     except Exception as e:
         logging.error(f"[Firebase] Failed to initialize Firebase Admin SDK: {e}")
         return False
 
 
-def send_push_notification(title: str, body: str = "", post_id: str = None, topic: str = None) -> bool:
-    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news')."""
-    if not init_firebase():
-        return False
+def _send_push_via_api_webhook(title: str, post_id: str = None) -> bool:
+    """Fallback dispatcher: Invokes the NewsPluk Edge /api/notify serverless endpoint."""
+    api_url = os.getenv("NOTIFY_API_URL", "https://newspluk.com/api/notify")
+    api_key = os.getenv("NOTIFY_API_KEY", "newspluk_notify_secret_2026")
+
+    payload = {
+        "id": str(post_id or ""),
+        "title": title or "Breaking Technology Dispatch",
+        "category": "News"
+    }
 
     try:
-        from firebase_admin import messaging
-
-        target_topic = topic or os.getenv("FIREBASE_NOTIFICATION_TOPIC", "all_news")
-        post_link = f"/{post_id}" if post_id else "/"
-
-        message = messaging.Message(
-            topic=target_topic,
-            notification=messaging.Notification(
-                title="NewsPluk | New Dispatch Published",
-                body=title or body or "New technical dispatch published."
-            ),
-            data={
-                "id": str(post_id or ""),
-                "link": post_link
+        req = urllib.request.Request(
+            api_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "User-Agent": "NewsPluk-Backend-Dispatcher/1.0"
             },
-            android=messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(
-                    channel_id="dispatches",
-                    sound="default",
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.status in (200, 201):
+                logging.info(f"[PushWebhook] Dispatched notification via edge webhook for post '{post_id}'.")
+                return True
+            else:
+                logging.warning(f"[PushWebhook] Edge webhook returned status {resp.status}.")
+                return False
+    except Exception as err:
+        logging.warning(f"[PushWebhook] Fallback webhook dispatch failed: {err}")
+        return False
+
+
+def send_push_notification(title: str, body: str = "", post_id: str = None, topic: str = None) -> bool:
+    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news')."""
+    if init_firebase():
+        try:
+            from firebase_admin import messaging
+
+            target_topic = topic or os.getenv("FIREBASE_NOTIFICATION_TOPIC", "all_news")
+            post_link = f"/{post_id}" if post_id else "/"
+
+            message = messaging.Message(
+                topic=target_topic,
+                notification=messaging.Notification(
+                    title="NewsPluk | New Dispatch Published",
+                    body=title or body or "New technical dispatch published."
+                ),
+                data={
+                    "id": str(post_id or ""),
+                    "postId": str(post_id or ""),
+                    "link": post_link,
+                    "title": str(title or ""),
+                },
+                android=messaging.AndroidConfig(
                     priority="high",
-                    default_vibrate_timings=True,
-                    visibility="public"
-                )
-            ),
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(
-                    aps=messaging.Aps(
-                        sound="default"
+                    notification=messaging.AndroidNotification(
+                        channel_id="dispatches",
+                        sound="default",
+                        priority="high",
+                        default_vibrate_timings=True,
+                        visibility="public"
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(
+                            sound="default"
+                        )
                     )
                 )
             )
-        )
 
-        response = messaging.send(message)
-        logging.info(f"[Firebase FCM] Successfully broadcasted push notification for post '{post_id}' (Message ID: {response}).")
-        return True
+            response = messaging.send(message)
+            logging.info(f"[Firebase FCM] Successfully broadcasted push notification for post '{post_id}' (Message ID: {response}).")
+            return True
 
-    except Exception as e:
-        logging.error(f"[Firebase FCM] Failed to dispatch push notification: {e}")
-        return False
+        except Exception as e:
+            logging.error(f"[Firebase FCM] Direct push dispatch failed: {e}. Attempting webhook fallback...")
+
+    # Fallback to web API notify endpoint if SDK credentials are not present or failed
+    return _send_push_via_api_webhook(title=title, post_id=post_id)
 
 
 def send_article_push(article: dict) -> bool:
