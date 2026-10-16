@@ -2,8 +2,30 @@
 
 from datetime import datetime
 
-def notify_subscriber_template(header: str, news_content: str, user_email: str, summary_content: str = "") -> str:
+def notify_subscriber_template(header_or_articles, news_content: str = "", user_email: str = "", summary_content: str = "") -> str:
     """Renders a responsive, high-deliverability editorial briefing inspired by clean Google aesthetic."""
+    if isinstance(header_or_articles, list):
+        articles = header_or_articles
+        header = f"NewsPluk Technical Dispatch: {articles[0].get('title', 'Daily Briefing')[:50]}" if articles else "NewsPluk Daily Dispatch"
+        blocks = []
+        for art in articles:
+            title = art.get("title", "")
+            desc = art.get("description") or art.get("excerpt") or ""
+            post_id = art.get("id") or art.get("slug") or ""
+            link = f"https://newspluk.com/#article-{post_id}" if post_id else "https://newspluk.com"
+            blocks.append(f"""
+                <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #e8eaed;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 18px; line-height: 1.4;">
+                        <a href="{link}" style="color: #1a73e8; text-decoration: none; font-weight: 600;">{title}</a>
+                    </h2>
+                    <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.6; color: #3c4043;">{desc}</p>
+                    <a href="{link}" style="display: inline-block; font-size: 13px; font-weight: 500; color: #1a73e8; text-decoration: none;">Read Full Dispatch &rarr;</a>
+                </div>
+            """)
+        news_content = "".join(blocks)
+    else:
+        header = str(header_or_articles)
+
     current_date = datetime.now().strftime("%A, %B %d, %Y")
     current_year = datetime.now().year
 
