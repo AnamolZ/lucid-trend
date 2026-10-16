@@ -92,7 +92,7 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
+          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY || 'newspluk_notify_secret_2026' }}
         run: |
           echo "Waiting 15s for Vercel CDN deployment propagation..."
           sleep 15

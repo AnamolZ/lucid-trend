@@ -94,12 +94,12 @@ def init_firebase() -> bool:
 
 def _send_push_via_api_webhook(title: str, post_id: str = None, extra_data: dict = None) -> bool:
     """Fallback dispatcher: Invokes the NewsPluk Edge /api/notify serverless endpoint."""
-    api_url = os.getenv("NOTIFY_API_URL", "https://newspluk.com/api/notify")
-    api_key = os.getenv("NOTIFY_API_KEY", "newspluk_notify_secret_2026")
+    api_url = (os.getenv("NOTIFY_API_URL") or "").strip() or "https://newspluk.com/api/notify"
+    api_key = (os.getenv("NOTIFY_API_KEY") or "").strip() or "newspluk_notify_secret_2026"
 
     payload = {
         "id": str(post_id or ""),
-        "title": title or "Breaking Technology Dispatch",
+        "title": (title or "Breaking Technology Dispatch")[:120],
         "category": "News"
     }
     if extra_data and isinstance(extra_data, dict):
@@ -129,7 +129,7 @@ def _send_push_via_api_webhook(title: str, post_id: str = None, extra_data: dict
 
 
 def send_push_notification(title: str, body: str = "", post_id: str = None, topic: str = None, extra_data: dict = None) -> bool:
-    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news') with rich payload."""
+    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news') with lean rich payload."""
     if init_firebase():
         try:
             from firebase_admin import messaging
@@ -141,19 +141,30 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
                 "id": str(post_id or ""),
                 "postId": str(post_id or ""),
                 "link": post_link,
-                "title": str(title or ""),
-                "body": str(body or title or ""),
+                "title": str(title or "")[:120],
+                "body": str(body or title or "")[:120],
             }
             if extra_data and isinstance(extra_data, dict):
                 for k, v in extra_data.items():
                     if v is not None:
-                        fcm_data[str(k)] = str(v)
+                        val_str = str(v)
+                        # STRICT SAFEGUARD: Never allow any single field (e.g. base64 or markdown)
+                        # to exceed 250 characters and blow past the FCM 4096-byte limit
+                        if len(val_str) > 250:
+                            val_str = val_str[:250]
+                        fcm_data[str(k)] = val_str
+
+            # Strict guardrail: calculate total payload byte size (must remain well under 4096 bytes)
+            total_bytes = sum(len(k.encode("utf-8")) + len(v.encode("utf-8")) for k, v in fcm_data.items())
+            if total_bytes > 3000:
+                fcm_data["description"] = fcm_data.get("description", "")[:100]
+                fcm_data["excerpt"] = fcm_data.get("excerpt", "")[:100]
 
             message = messaging.Message(
                 topic=target_topic,
                 notification=messaging.Notification(
                     title="NewsPluk | New Dispatch Published",
-                    body=title or body or "New technical dispatch published."
+                    body=(title or body or "New technical dispatch published.")[:120]
                 ),
                 data=fcm_data,
                 android=messaging.AndroidConfig(
@@ -187,31 +198,40 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
 
 
 def send_article_push(article: dict) -> bool:
-    """Dispatches a high-fidelity rich push notification corresponding to an article dictionary."""
+    """Dispatches a high-fidelity lean push notification corresponding to an article dictionary."""
     if not article or not isinstance(article, dict):
         return False
 
-    title = article.get("title", "Breaking Technology Dispatch")
     post_id = article.get("id") or str(article.get("_id", ""))
-    description = (article.get("description", "") or article.get("excerpt", ""))[:280]
+    title = str(article.get("title", "Breaking Technology Dispatch"))[:120]
+    description = str(article.get("description", "") or article.get("excerpt", ""))[:200]
 
     raw_category = article.get("category", ["General"])
-    category_str = raw_category[0] if isinstance(raw_category, list) and raw_category else str(raw_category or "News")
+    category_str = str(raw_category[0] if isinstance(raw_category, list) and raw_category else (raw_category or "News"))[:30]
 
-    img = article.get("image") or article.get("thumbnail") or ""
-    if img and img.startswith("/"):
-        img = f"https://newspluk.com{img}"
+    # CRITICAL FIX: Turso stores raw base64 data URIs (50KB-200KB) in the image column!
+    # Under NO circumstance send base64 data URIs to FCM (causes 'Message is too large' 4KB error).
+    # Always resolve to the ultra-compact CDN image URL (/images/<post_id>.jpg).
+    raw_img = article.get("image") or article.get("thumbnail") or ""
+    if raw_img and (str(raw_img).startswith("data:") or len(str(raw_img)) > 200):
+        img = f"https://newspluk.com/images/{post_id}.jpg" if post_id else ""
+    elif raw_img and str(raw_img).startswith("/"):
+        img = f"https://newspluk.com{raw_img}"
+    elif raw_img and str(raw_img).startswith("http"):
+        img = str(raw_img)[:200]
+    else:
+        img = f"https://newspluk.com/images/{post_id}.jpg" if post_id else ""
 
     raw_author = article.get("author")
     if isinstance(raw_author, dict):
-        author_name = raw_author.get("name", "Anamol Dhakal")
-        author_role = raw_author.get("role", "Backend System Developer")
+        author_name = str(raw_author.get("name", "Anamol Dhakal"))[:50]
+        author_role = str(raw_author.get("role", "Backend System Developer"))[:50]
     else:
-        author_name = str(raw_author or "Anamol Dhakal")
+        author_name = str(raw_author or "Anamol Dhakal")[:50]
         author_role = "Backend System Developer"
 
-    read_time = str(article.get("readingTime") or article.get("reading_time") or article.get("readTime") or "3 min")
-    pub_date = str(article.get("published_at") or article.get("date") or article.get("created_at") or "")
+    read_time = str(article.get("readingTime") or article.get("reading_time") or article.get("readTime") or "3 min")[:15]
+    pub_date = str(article.get("published_at") or article.get("date") or article.get("created_at") or "")[:35]
 
     extra_data = {
         "description": description,
