@@ -156,7 +156,40 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
         }
         prepared_documents.append(doc)
 
-    # 1. Write to Turso libSQL (Single Source of Truth)
+    # 1. Pre-Insertion Semantic Deduplication against existing database posts
+    try:
+        from service.data_cleaning.gemini import are_articles_semantic_duplicates
+        turso_service = TursoDBService()
+        existing_recent = turso_service.fetch_recent_posts_for_export(limit=50)
+
+        unique_docs = []
+        for doc in prepared_documents:
+            is_dup = False
+            for exist in existing_recent:
+                if doc.get("id") == exist.get("id") or are_articles_semantic_duplicates(doc, exist):
+                    logging.info(f"[InsertPosts] Skipping semantic duplicate of '{exist.get('title')}': '{doc.get('title')}'")
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                for accepted in unique_docs:
+                    if are_articles_semantic_duplicates(doc, accepted):
+                        logging.info(f"[InsertPosts] Skipping batch duplicate of '{accepted.get('title')}': '{doc.get('title')}'")
+                        is_dup = True
+                        break
+
+            if not is_dup:
+                unique_docs.append(doc)
+
+        prepared_documents = unique_docs
+    except Exception as dedup_err:
+        logging.warning(f"[InsertPosts] Pre-deduplication check warning: {dedup_err}")
+
+    if not prepared_documents:
+        logging.info("[InsertPosts] All incoming articles were semantic duplicates of existing dispatches. Skipping insertion.")
+        return []
+
+    # 2. Write to Turso libSQL (Single Source of Truth)
     try:
         turso_service = TursoDBService()
         inserted_ids = turso_service.insert_documents(prepared_documents, purge_older_than_days=14)
