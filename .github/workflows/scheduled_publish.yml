@@ -59,6 +59,7 @@ jobs:
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SKIP_PUSH_NOTIFICATIONS: "1"
           TZ: Asia/Kathmandu
         run: |
           uv run python main.py --once
@@ -84,3 +85,15 @@ jobs:
             git push origin main
             echo "Successfully deployed new static dispatches to Vercel CDN Edge!"
           fi
+
+      - name: Dispatch Rich Push Notifications to Mobile App
+        working-directory: lucid-trend
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
+        run: |
+          echo "Waiting 15s for Vercel CDN deployment propagation..."
+          sleep 15
+          uv run python -c "from service.notifications.push_service import send_latest_dispatches_push; count = send_latest_dispatches_push(limit=2); print(f'Dispatched rich push for {count} articles.')"

@@ -92,7 +92,7 @@ def init_firebase() -> bool:
         return False
 
 
-def _send_push_via_api_webhook(title: str, post_id: str = None) -> bool:
+def _send_push_via_api_webhook(title: str, post_id: str = None, extra_data: dict = None) -> bool:
     """Fallback dispatcher: Invokes the NewsPluk Edge /api/notify serverless endpoint."""
     api_url = os.getenv("NOTIFY_API_URL", "https://newspluk.com/api/notify")
     api_key = os.getenv("NOTIFY_API_KEY", "newspluk_notify_secret_2026")
@@ -102,6 +102,8 @@ def _send_push_via_api_webhook(title: str, post_id: str = None) -> bool:
         "title": title or "Breaking Technology Dispatch",
         "category": "News"
     }
+    if extra_data and isinstance(extra_data, dict):
+        payload.update(extra_data)
 
     try:
         req = urllib.request.Request(
@@ -126,8 +128,8 @@ def _send_push_via_api_webhook(title: str, post_id: str = None) -> bool:
         return False
 
 
-def send_push_notification(title: str, body: str = "", post_id: str = None, topic: str = None) -> bool:
-    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news')."""
+def send_push_notification(title: str, body: str = "", post_id: str = None, topic: str = None, extra_data: dict = None) -> bool:
+    """Broadcasts a high-priority push notification to a Firebase topic (default: 'all_news') with rich payload."""
     if init_firebase():
         try:
             from firebase_admin import messaging
@@ -135,18 +137,25 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
             target_topic = topic or os.getenv("FIREBASE_NOTIFICATION_TOPIC", "all_news")
             post_link = f"/{post_id}" if post_id else "/"
 
+            fcm_data = {
+                "id": str(post_id or ""),
+                "postId": str(post_id or ""),
+                "link": post_link,
+                "title": str(title or ""),
+                "body": str(body or title or ""),
+            }
+            if extra_data and isinstance(extra_data, dict):
+                for k, v in extra_data.items():
+                    if v is not None:
+                        fcm_data[str(k)] = str(v)
+
             message = messaging.Message(
                 topic=target_topic,
                 notification=messaging.Notification(
                     title="NewsPluk | New Dispatch Published",
                     body=title or body or "New technical dispatch published."
                 ),
-                data={
-                    "id": str(post_id or ""),
-                    "postId": str(post_id or ""),
-                    "link": post_link,
-                    "title": str(title or ""),
-                },
+                data=fcm_data,
                 android=messaging.AndroidConfig(
                     priority="high",
                     notification=messaging.AndroidNotification(
@@ -174,16 +183,68 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
             logging.error(f"[Firebase FCM] Direct push dispatch failed: {e}. Attempting webhook fallback...")
 
     # Fallback to web API notify endpoint if SDK credentials are not present or failed
-    return _send_push_via_api_webhook(title=title, post_id=post_id)
+    return _send_push_via_api_webhook(title=title, post_id=post_id, extra_data=extra_data)
 
 
 def send_article_push(article: dict) -> bool:
-    """Dispatches a push notification corresponding to an article dictionary."""
+    """Dispatches a high-fidelity rich push notification corresponding to an article dictionary."""
     if not article or not isinstance(article, dict):
         return False
 
     title = article.get("title", "Breaking Technology Dispatch")
     post_id = article.get("id") or str(article.get("_id", ""))
-    description = article.get("description", "")
+    description = (article.get("description", "") or article.get("excerpt", ""))[:280]
 
-    return send_push_notification(title=title, body=description, post_id=post_id)
+    raw_category = article.get("category", ["General"])
+    category_str = raw_category[0] if isinstance(raw_category, list) and raw_category else str(raw_category or "News")
+
+    img = article.get("image") or article.get("thumbnail") or ""
+    if img and img.startswith("/"):
+        img = f"https://newspluk.com{img}"
+
+    raw_author = article.get("author")
+    if isinstance(raw_author, dict):
+        author_name = raw_author.get("name", "Anamol Dhakal")
+        author_role = raw_author.get("role", "Backend System Developer")
+    else:
+        author_name = str(raw_author or "Anamol Dhakal")
+        author_role = "Backend System Developer"
+
+    read_time = str(article.get("readingTime") or article.get("reading_time") or article.get("readTime") or "3 min")
+    pub_date = str(article.get("published_at") or article.get("date") or article.get("created_at") or "")
+
+    extra_data = {
+        "description": description,
+        "excerpt": description,
+        "category": category_str,
+        "image": img,
+        "thumbnail": img,
+        "readingTime": read_time,
+        "readTime": read_time,
+        "published_at": pub_date,
+        "date": pub_date,
+        "authorName": author_name,
+        "authorRole": author_role,
+    }
+
+    return send_push_notification(title=title, body=description, post_id=post_id, extra_data=extra_data)
+
+
+def send_latest_dispatches_push(limit: int = 2) -> int:
+    """Fetches the most recently inserted Turso dispatches and broadcasts rich notifications."""
+    try:
+        from service.tursodb.client import TursoDBService
+        turso = TursoDBService()
+        posts = turso.fetch_recent_posts_for_export(limit=limit)
+        if not posts:
+            logging.warning("[PushService] No recent posts found to notify.")
+            return 0
+        count = 0
+        for p in posts:
+            if send_article_push(p):
+                count += 1
+        logging.info(f"[PushService] Broadcasted push for {count}/{len(posts)} recent dispatches.")
+        return count
+    except Exception as e:
+        logging.error(f"[PushService] Error broadcasting latest dispatches: {e}")
+        return 0
