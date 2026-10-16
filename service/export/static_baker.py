@@ -65,6 +65,7 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         target_dirs = [
             os.path.join(base_dir, "public", "api"),
             os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api"),
+            os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api"),
         ]
         dist_api = os.path.join(os.path.dirname(base_dir), "news-pluk", "dist", "api")
         if os.path.exists(os.path.join(os.path.dirname(base_dir), "news-pluk", "dist")):

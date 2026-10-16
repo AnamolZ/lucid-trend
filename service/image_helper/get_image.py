@@ -62,6 +62,9 @@ def build_grounded_flux_prompt(
         base = anchor
 
     base = base.replace('"', '').replace("'", "").strip()
+    if title and title.strip().lower() not in base.lower():
+        base = f"{base}. Focus: {title.strip()}"
+
     style_suffix = "cinematic lighting, photorealistic, 8k octane render, clean 16:9 composition, hyper-detailed"
     if "16:9" not in base.lower():
         base = f"{base}, {style_suffix}"
@@ -118,22 +121,41 @@ def generate_cloudflare_image(prompt: str) -> str:
 
 
 def generate_pollinations_image(prompt: str) -> str:
-    """Generates a high-quality 16:9 FLUX image via Pollinations.ai (zero-cost, zero-auth fallback)."""
-    try:
-        logging.info("[Pollinations FLUX] Dispatching fallback generation request...")
-        clean_prompt = urllib.parse.quote(prompt.strip())
-        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?model=flux&width=1024&height=576&nologo=true"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        with urllib.request.urlopen(req, timeout=35) as resp:
-            data = resp.read()
-            if len(data) > 1000:
-                encoded = base64.b64encode(data).decode("utf-8")
-                logging.info(f"[Pollinations FLUX] Successfully generated fallback FLUX image ({len(data)} bytes).")
-                return f"data:image/jpeg;base64,{encoded}"
+    """Generates a high-quality technical image via Pollinations.ai (zero-cost fallback using Sana / Pollen)."""
+    clean_prompt = urllib.parse.quote(prompt.strip())
+    pollen_key = os.getenv("POLLINATIONS_API_KEY") or os.getenv("POLLEN_API_KEY")
 
-        logging.warning("[Pollinations FLUX] Response contained invalid or empty image data.")
-    except Exception as e:
-        logging.warning(f"[Pollinations FLUX] Generation fallback failed: {e}")
+    # Sana is active and free on Pollinations without triggering FREE_LIMIT (402)
+    url = f"https://image.pollinations.ai/prompt/{clean_prompt}?model=sana"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    if pollen_key:
+        headers["Authorization"] = f"Bearer {pollen_key.strip()}"
+
+    for attempt in range(1, 4):
+        try:
+            logging.info(f"[Pollinations] Dispatching fallback generation request (Attempt #{attempt})...")
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=35) as resp:
+                data = resp.read()
+                if len(data) > 1000:
+                    encoded = base64.b64encode(data).decode("utf-8")
+                    logging.info(f"[Pollinations] Successfully generated fallback image ({len(data)} bytes).")
+                    return f"data:image/jpeg;base64,{encoded}"
+
+            logging.warning("[Pollinations] Response contained invalid or empty image data.")
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode("utf-8", errors="ignore")[:150]
+            logging.warning(f"[Pollinations] HTTP {he.code}: {err_body}")
+            if he.code in (402, 429, 503) and attempt < 3:
+                wait_time = 12 * attempt
+                logging.info(f"[Pollinations] Rate limit/busy detected. Backing off for {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                break
+        except Exception as e:
+            logging.warning(f"[Pollinations] Generation attempt #{attempt} failed: {e}")
+            if attempt < 3:
+                time.sleep(5)
 
     return None
 

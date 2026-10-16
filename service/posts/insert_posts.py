@@ -13,24 +13,90 @@ from service.export.static_baker import bake_static_payloads
 
 _fallback_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="AsyncWorker")
 
-DEFAULT_IMAGE = "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80"
+import hashlib
+import threading
+
+TOPIC_FALLBACK_POOLS = {
+    "quantum": [
+        "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "robotics": [
+        "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1561557944-6e7860d1a7eb?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1531746790731-6c087fecd65a?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "chips": [
+        "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "cloud": [
+        "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "software": [
+        "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "security": [
+        "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1510511459019-5dda7724fd87?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "general": [
+        "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?auto=format&fit=crop&w=1200&q=80",
+    ]
+}
+
 AUTHOR = {"name": "NewsPluk Editorial", "role": "Systems Desk"}
+_image_synthesis_lock = threading.Lock()
+
+
+def get_topic_fallback_image(title: str = "", description: str = "", category: list = None, post_id: str = "") -> str:
+    """Deterministically returns a unique, topic-relevant high-resolution image for every article."""
+    corpus = f"{title or ''} {description or ''} {' '.join(category) if isinstance(category, list) else ''}".lower()
+
+    if any(k in corpus for k in ["quantum", "qubit", "cryostat", "superconductor"]):
+        pool = TOPIC_FALLBACK_POOLS["quantum"]
+    elif any(k in corpus for k in ["robot", "humanoid", "actuator", "drone", "embodied"]):
+        pool = TOPIC_FALLBACK_POOLS["robotics"]
+    elif any(k in corpus for k in ["chip", "semiconductor", "dram", "wafer", "nanostack", "gpu", "tpu", "hardware", "silicon"]):
+        pool = TOPIC_FALLBACK_POOLS["chips"]
+    elif any(k in corpus for k in ["cloud", "datacenter", "server", "cluster", "kubernetes"]):
+        pool = TOPIC_FALLBACK_POOLS["cloud"]
+    elif any(k in corpus for k in ["security", "vulnerability", "hack", "cyber", "malware", "firewall"]):
+        pool = TOPIC_FALLBACK_POOLS["security"]
+    elif any(k in corpus for k in ["code", "developer", "ide", "compiler", "rust", "python", "software", "api"]):
+        pool = TOPIC_FALLBACK_POOLS["software"]
+    else:
+        pool = TOPIC_FALLBACK_POOLS["general"]
+
+    # Use hash of post_id / title so every unique post deterministically gets its own distinct photo
+    key = post_id or title or "newspluk-default"
+    idx = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16) % len(pool)
+    return pool[idx]
 
 
 def _dispatch_visual_and_audio_task(post_id: str, prompt: str, title: str, description: str = None, category: list = None, content: str = None):
-    """Executes image synthesis and neural audio generation in background."""
+    """Executes image synthesis and neural audio generation in background with serialized rate-limit pacing."""
     from service.image_helper.get_image import huggingface_image
     logging.info(f"[Worker] Background image & audio generation started for '{post_id}'...")
     try:
-        # 1. Synthesize visual asset
-        image_url = huggingface_image(
-            prompt=prompt,
-            title=title,
-            description=description,
-            category=category,
-            max_rounds=1,
-            wait_seconds=0
-        )
+        # 1. Synthesize visual asset under lock to prevent concurrent rate-limit collisions
+        with _image_synthesis_lock:
+            image_url = huggingface_image(
+                prompt=prompt,
+                title=title,
+                description=description,
+                category=category,
+                max_rounds=1,
+                wait_seconds=0
+            )
         if image_url:
             turso = TursoDBService()
             turso.update_post_image(post_id, image_url)
@@ -73,10 +139,16 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
     for item in data:
         now_iso = datetime.now(timezone.utc).isoformat()
         post_id = item.get("id")
+        fallback_img = get_topic_fallback_image(
+            title=item.get("title", ""),
+            description=item.get("description", ""),
+            category=item.get("category"),
+            post_id=post_id or ""
+        )
         doc = {
             **item,
-            "image": item.get("image") or DEFAULT_IMAGE,
-            "thumbnail": item.get("thumbnail") or DEFAULT_IMAGE,
+            "image": item.get("image") or fallback_img,
+            "thumbnail": item.get("thumbnail") or fallback_img,
             "audio_url": item.get("audio_url") or (f"/audio/{post_id}.m4a" if post_id else ""),
             "author": item.get("author") or AUTHOR,
             "source": item.get("source") or "NewsPluk Editorial",
