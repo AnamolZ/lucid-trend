@@ -23,7 +23,21 @@ def init_firebase() -> bool:
             _firebase_initialized = True
             return True
 
-        # Check candidate locations for service account key
+        # Check for raw JSON in FIREBASE_SERVICE_ACCOUNT env var
+        import json
+        raw_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+        if raw_json and str(raw_json).strip().startswith("{"):
+            try:
+                account_info = json.loads(raw_json)
+                cred = credentials.Certificate(account_info)
+                firebase_admin.initialize_app(cred)
+                _firebase_initialized = True
+                logging.info("[Firebase] Initialized Firebase Admin SDK successfully from FIREBASE_SERVICE_ACCOUNT env string.")
+                return True
+            except Exception as j_err:
+                logging.warning(f"[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT json: {j_err}")
+
+        # Check candidate locations for service account key file
         custom_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

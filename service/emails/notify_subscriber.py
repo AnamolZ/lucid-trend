@@ -23,25 +23,42 @@ def notify_subscribers(data_or_path, model=None, mongo_uri: str = None, smtp_ser
     news_json_str = json.dumps(news_data, ensure_ascii=False)
     logging.info(f"[NotifySubscribers] Queuing newsletter & mobile push dispatch for {len(news_data)} articles...")
 
-    # 1. Dispatch Email Newsletter Task
-    try:
-        email_task = send_email_task.delay(news_json_str)
-        logging.info("[NotifySubscribers] Queued email newsletter dispatch task via Celery.")
-    except Exception as e:
-        logging.warning(f"[NotifySubscribers] Failed to queue email task: {e}")
+    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS")
 
-    # 2. Dispatch Mobile Push Notifications Task (Firebase FCM)
-    try:
-        from service.tasks.tasks import send_push_notifications_batch_task
-        push_task = send_push_notifications_batch_task.delay(news_json_str)
-        logging.info("[NotifySubscribers] Queued mobile push notification task via Celery.")
-    except Exception as push_err:
-        logging.warning(f"[NotifySubscribers] Celery push queue offline ({push_err}). Dispatching inline push...")
+    if use_celery:
+        # 1. Dispatch Email Newsletter Task via Celery
+        try:
+            email_task = send_email_task.delay(news_json_str)
+            logging.info("[NotifySubscribers] Queued email newsletter dispatch task via Celery.")
+        except Exception as e:
+            logging.warning(f"[NotifySubscribers] Failed to queue email task: {e}")
+
+        # 2. Dispatch Mobile Push Notifications Task (Firebase FCM) via Celery
+        try:
+            from service.tasks.tasks import send_push_notifications_batch_task
+            push_task = send_push_notifications_batch_task.delay(news_json_str)
+            logging.info("[NotifySubscribers] Queued mobile push notification task via Celery.")
+        except Exception as push_err:
+            logging.warning(f"[NotifySubscribers] Celery push queue offline ({push_err}). Dispatching inline push...")
+            try:
+                from service.notifications.push_service import send_article_push
+                for art in news_data:
+                    send_article_push(art)
+            except Exception as inline_err:
+                logging.error(f"[NotifySubscribers] Inline push dispatch failed: {inline_err}")
+    else:
+        # Direct execution without Celery / Redis in CI or standalone mode
+        logging.info("[NotifySubscribers] Dispatching newsletter and push notifications directly...")
+        try:
+            send_email_task(news_json_str)
+        except Exception as e:
+            logging.warning(f"[NotifySubscribers] Direct email dispatch warning: {e}")
+
         try:
             from service.notifications.push_service import send_article_push
             for art in news_data:
                 send_article_push(art)
         except Exception as inline_err:
-            logging.error(f"[NotifySubscribers] Inline push dispatch failed: {inline_err}")
+            logging.warning(f"[NotifySubscribers] Direct push notification warning: {inline_err}")
 
     return True
