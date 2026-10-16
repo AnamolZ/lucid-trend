@@ -127,7 +127,7 @@ def send_email_task(news_json_str: str) -> bool:
 
         html_content = notify_subscriber_template(articles)
         title_preview = articles[0].get("title", "Daily Briefing") if articles else "Daily Briefing"
-        subject = f"NewsPluk Technical Dispatch: {title_preview[:50]}"
+        subject = f"Your Daily Brief - NewsPluk: {title_preview[:50]}"
         sent_count = send_bulk_emails(addresses, subject, html_content)
         if sent_count > 0:
             logging.info(f"[EmailWorker] Successfully dispatched newsletter to {sent_count} subscribers.")
