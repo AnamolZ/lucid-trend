@@ -53,7 +53,11 @@ TOPIC_FALLBACK_POOLS = {
     ]
 }
 
-AUTHOR = {"name": "NewsPluk Editorial", "role": "Systems Desk"}
+AUTHOR = {
+    "name": "Anamol Dhakal",
+    "role": "Backend System Developer",
+    "avatar": "/avatar-anamol.webp"
+}
 _image_synthesis_lock = threading.Lock()
 
 

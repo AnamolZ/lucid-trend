@@ -84,7 +84,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         desc = item.get("description", "")
         content = item.get("content", "")
         category = item.get("category", ["General"])
-        author = item.get("author") or {"name": "NewsPluk Editorial", "role": "Systems Desk"}
+        raw_author = item.get("author")
+        if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") != "NewsPluk Editorial":
+            author = raw_author
+        else:
+            author = {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "/avatar-anamol.webp"}
         audio_url = item.get("audio_url") or f"/audio/{post_id}.m4a"
 
         # Transform heavy base64 images into flat edge assets
