@@ -1,6 +1,7 @@
 """Firebase Cloud Messaging (FCM) push notification service for mobile dispatch broadcasting."""
 
 import os
+import re
 import json
 import base64
 import logging
@@ -207,7 +208,10 @@ def send_article_push(article: dict) -> bool:
 
     post_id = article.get("id") or str(article.get("_id", ""))
     title = str(article.get("title", "Breaking Technology Dispatch"))[:120]
-    description = str(article.get("description", "") or article.get("excerpt", ""))[:200]
+    raw_desc = str(article.get("description", "") or article.get("excerpt", ""))
+    clean_desc = re.sub(r'<[^>]+>', '', raw_desc).strip()
+    clean_desc = " ".join(clean_desc.split())
+    description = clean_desc[:200]
 
     raw_category = article.get("category", ["General"])
     category_str = str(raw_category[0] if isinstance(raw_category, list) and raw_category else (raw_category or "News"))[:30]

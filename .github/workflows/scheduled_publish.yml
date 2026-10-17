@@ -24,19 +24,19 @@ concurrency:
 jobs:
   publish:
     name: Scout, Synthesize, Bake & Publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       NODE_NO_WARNINGS: "1"
 
     steps:
       - name: Check out lucid-trend
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: lucid-trend
 
       - name: Check out news-pluk (Static Delivery Platform)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: AnamolZ/news-pluk
           path: news-pluk
@@ -44,7 +44,7 @@ jobs:
           ref: main
 
       - name: Install uv (Fast Package Manager)
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: "lucid-trend/uv.lock"
