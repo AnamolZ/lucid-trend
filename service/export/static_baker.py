@@ -34,10 +34,6 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
         img_bytes = base64.b64decode(encoded)
 
         for dest in target_dirs:
-            # The mobile client app must remain ultra-lean (<7MB); never bundle article images into mobile assets
-            if "news-pluk-application" in dest:
-                continue
-
             # Resolve public/images directory alongside public/api
             if dest.endswith("api") or dest.endswith("api" + os.sep):
                 img_dir = os.path.abspath(os.path.join(dest, "..", "images"))
@@ -46,6 +42,23 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
 
             os.makedirs(img_dir, exist_ok=True)
             img_path = os.path.join(img_dir, filename)
+
+            # For mobile application, compress to mobile-optimized 78% quality (max-width 1080) for lean hybrid bundling (<7MB)
+            if "news-pluk-application" in dest:
+                try:
+                    from PIL import Image
+                    import io
+                    with Image.open(io.BytesIO(img_bytes)) as im:
+                        if im.mode in ('RGBA', 'P'):
+                            im = im.convert('RGB')
+                        if im.width > 1080:
+                            new_height = int(im.height * (1080 / im.width))
+                            im = im.resize((1080, new_height), Image.Resampling.LANCZOS)
+                        im.save(img_path, 'JPEG', quality=78, optimize=True)
+                        continue
+                except Exception:
+                    pass
+
             with open(img_path, "wb") as f:
                 f.write(img_bytes)
 
