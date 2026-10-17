@@ -163,7 +163,6 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
             post_tag = str(post_id or "").strip()
             message = messaging.Message(
                 topic=target_topic,
-                collapse_key=post_tag if post_tag else None,
                 notification=messaging.Notification(
                     title="NewsPluk | New Dispatch Published",
                     body=(title or body or "New technical dispatch published.")[:120]
