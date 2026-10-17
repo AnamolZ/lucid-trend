@@ -41,7 +41,7 @@ class RootAgentConfig:
 
         CATEGORY INSTRUCTION:
         For the `category` array, provide exactly two elements: ["Breaking News", "<DOMAIN>"] where <DOMAIN> is chosen from:
-        "AI & ML", "Cloud & Infrastructure", "Developer Central", "Tech Strategy", "Cybersecurity", "Programming & Frameworks".
+        "AI & ML", "Cloud & Infrastructure", "Developer Central", "Tech Strategy", "Cybersecurity", "Programming & Frameworks", "Finance & Markets", "Crypto & Web3", "Macroeconomics", "Geopolitics & Defense", "Global Security", "International Relations".
 
         CRITICAL: OUTPUT ONLY THE RAW VALID JSON ARRAY. NO MARKDOWN CODE FENCES (```json), NO PREAMBLE, NO EXPLANATIONS.
     """

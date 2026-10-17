@@ -2,9 +2,20 @@ name: Autonomous NewsPluk Publishing Engine
 
 on:
   schedule:
-    # 04:50 UTC & 16:50 UTC (Corresponds to ~05:05 & ~17:05 Asia/Kathmandu)
-    - cron: '50 23,11 * * *'
+    # Every 3 hours continuous micro-dispatch cycle (UTC: 02:00, 05:00, 08:00, 11:00, 14:00, 17:00, 20:00, 23:00)
+    - cron: '0 */3 * * *'
   workflow_dispatch:
+    inputs:
+      category:
+        description: 'Target Category to scout & publish (Leave empty for auto-slot resolution)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - 'Finance'
+          - 'Geopolitics'
+          - 'Technology'
 
 concurrency:
   group: publish-pipeline
@@ -62,7 +73,14 @@ jobs:
           SKIP_PUSH_NOTIFICATIONS: "1"
           TZ: Asia/Kathmandu
         run: |
-          uv run python main.py --once
+          CATEGORY_INPUT="${{ github.event.inputs.category }}"
+          if [ -n "$CATEGORY_INPUT" ]; then
+            echo "Running targeted dispatch for category: $CATEGORY_INPUT"
+            uv run python main.py --once --category="$CATEGORY_INPUT"
+          else
+            echo "Running autonomous slot-based micro-dispatch"
+            uv run python main.py --once
+          fi
 
       - name: Bake Static CDN Payloads & Audio
         working-directory: lucid-trend
@@ -96,4 +114,4 @@ jobs:
         run: |
           echo "Waiting 15s for Vercel CDN deployment propagation..."
           sleep 15
-          uv run python -c "from service.notifications.push_service import send_latest_dispatches_push; count = send_latest_dispatches_push(limit=2); print(f'Dispatched rich push for {count} articles.')"
+          uv run python -c "from service.notifications.push_service import send_latest_dispatches_push; count = send_latest_dispatches_push(limit=1); print(f'Dispatched rich push for {count} articles.')"

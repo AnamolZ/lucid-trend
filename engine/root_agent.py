@@ -19,23 +19,36 @@ class RootAgentPipeline:
         """Proxies any standard AgentEngine properties to the underlying engine."""
         return getattr(self.root_engine, name)
 
-    async def agent_response(self, ask: str) -> str:
-        """Executes the 2-Stage Grounded Research & Synthesis Pipeline."""
-        logger.info("[RootPipeline] Step 1/2: Scouting verified 24-hour tech breakthroughs...")
-        raw_intel = await asyncio.to_thread(fetch_recent_tech_intel, max_items=12)
-        dossier = format_intel_dossier(raw_intel)
+    async def agent_response(self, ask: str, category_key: str = "Technology", exclusions: list = None) -> str:
+        """Executes the Category-Targeted 2-Stage Intelligence & Synthesis Pipeline."""
+        from engine.slot_coordinator import CATEGORY_PILLARS
+        from engine.live_scout import scout_category_intel, format_category_dossier
+        from service.telemetry.quota_tracker import telemetry_tracker
+        from config.model_pool import get_active_key, get_active_model
+
+        pillar_info = CATEGORY_PILLARS.get(category_key, CATEGORY_PILLARS["Technology"])
+        pillar_title = pillar_info["pillar"]
+        queries = pillar_info["search_queries"]
+
+        logger.info(f"[RootPipeline] Step 1/2: Scouting verified 24h developments for '{pillar_title}'...")
+        raw_intel = await asyncio.to_thread(scout_category_intel, category_key, queries, max_items=12)
+        dossier = format_category_dossier(raw_intel, exclusions or [])
         logger.info(f"[RootPipeline] Step 1/2 Complete: {len(raw_intel)} verified developments scouted.")
 
-        logger.info("[RootPipeline] Step 2/2: Synthesizing publication-ready articles via Editor-in-Chief...")
+        logger.info(f"[RootPipeline] Step 2/2: Synthesizing publication-ready article for '{category_key}' via Editor-in-Chief...")
         grounded_prompt = (
+            f"PILLAR: {pillar_title}\n\n"
             f"{dossier}\n\n"
             f"EDITORIAL DIRECTIVE:\n"
             f"{ask}\n\n"
-            f"Select the top 2 genuine breakthrough developments from the verified intelligence above "
-            f"and synthesize publication-ready articles strictly matching the required JSON schema."
+            f"Select the SINGLE MOST SIGNIFICANT, verified breaking development in '{pillar_title}' from the past 24 hours "
+            f"that does NOT violate the critical exclusion mandate above. Synthesize exactly ONE publication-ready technical dispatch strictly matching the required JSON schema."
         )
 
         reply = await self.root_engine.agent_response(grounded_prompt)
+
+        # Record API call in telemetry tracker
+        telemetry_tracker.record_call(get_active_key(), get_active_model())
         return reply
 
 class RootAgentEngine:

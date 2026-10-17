@@ -203,7 +203,8 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
 
     # 2. Dispatch generation (Visuals + Audio Narration)
     futures = []
-    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS")
+    is_standalone_cli = "--once" in sys.argv or "--now" in sys.argv
+    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS") and not is_standalone_cli
 
     for item in prepared_documents:
         post_id = item.get("id")

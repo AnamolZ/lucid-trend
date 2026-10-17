@@ -23,7 +23,9 @@ def notify_subscribers(data_or_path, model=None, mongo_uri: str = None, smtp_ser
     news_json_str = json.dumps(news_data, ensure_ascii=False)
     logging.info(f"[NotifySubscribers] Queuing newsletter & mobile push dispatch for {len(news_data)} articles...")
 
-    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS")
+    import sys
+    is_standalone_cli = "--once" in sys.argv or "--now" in sys.argv
+    use_celery = bool(os.getenv("CELERY_BROKER_URL")) and not os.getenv("GITHUB_ACTIONS") and not is_standalone_cli
 
     skip_push = os.getenv("SKIP_PUSH_NOTIFICATIONS") == "1"
 

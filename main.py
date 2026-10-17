@@ -70,27 +70,41 @@ async def safe_execute(step_name: str, func, *args, **kwargs):
         logging.error(f"[{step_name}] Step failed after {elapsed:.2f}s: {str(e)}")
         return None
 
-async def run_pipeline() -> bool:
-    """Executes autonomous intelligence scouting, article extraction, database publication, and email dispatch."""
+async def run_pipeline(target_category: str = None) -> bool:
+    """Executes targeted autonomous intelligence scouting, article extraction, database publication, and email dispatch."""
+    from engine.slot_coordinator import resolve_active_slot, fetch_category_exclusions
+    from service.telemetry.quota_tracker import telemetry_tracker
+
+    slot_info = resolve_active_slot(target_category)
+    cat_key = slot_info["category_key"]
+    pillar_title = slot_info["pillar_info"]["pillar"]
+    slot_label = slot_info["label"]
+
     active_key = get_active_key()
+    active_model = get_active_model()
     masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "***"
 
-    logging.info("=" * 65)
-    logging.info(f"[Pipeline] Cycle started | Model: '{get_active_model()}' | Active Key #{coordinator.key_index + 1} ({masked_key})")
-    logging.info("=" * 65)
+    logging.info("=" * 78)
+    logging.info(f"[Pipeline] Micro-Dispatch Cycle Started | Slot #{slot_info['slot']}: {slot_label}")
+    logging.info(f"[Pipeline] Category: {cat_key} ({pillar_title}) | Model: '{active_model}'")
+    logging.info("=" * 78)
 
     try:
+        # 1. Fetch past 15 titles strictly from this category for upstream exclusion
+        exclusions = fetch_category_exclusions(cat_key, limit=15)
+
         root = RootAgentEngine()
         research_prompt = (
-            "Identify the top 2 breakthrough technology developments from the past 24 hours. "
-            "Conduct deep technical research on architecture, benchmarks, and developer impact, "
-            "and produce publication-ready articles matching the specified JSON schema."
+            f"Identify the single most significant breaking development in '{pillar_title}' from the past 24 hours. "
+            f"Conduct rigorous technical / financial / geopolitical analysis and synthesize exactly ONE publication-ready article matching the specified JSON schema."
         )
 
         reply = await safe_execute(
             "AgentResearch",
             root.root_agent().agent_response,
-            research_prompt
+            research_prompt,
+            category_key=cat_key,
+            exclusions=exclusions
         )
         if not reply:
             logging.warning("[Pipeline] Agent returned no data. Pipeline aborted for this cycle.")
@@ -100,7 +114,7 @@ async def run_pipeline() -> bool:
         if not articles or not isinstance(articles, list):
             logging.warning("[Pipeline] Extraction found no valid articles.")
             return False
-        logging.info(f"[DataExtraction] Extracted {len(articles)} curated articles with zero token overhead.")
+        logging.info(f"[DataExtraction] Extracted {len(articles)} curated article(s) with zero token overhead.")
 
         inserted_docs = await safe_execute("InsertPosts", insert_posts, articles)
         if not inserted_docs:
@@ -118,20 +132,26 @@ async def run_pipeline() -> bool:
             else:
                 logging.info("[DuplicateDetection] Database clean: 0 duplicate articles detected.")
 
-        logging.info("=" * 65)
-        logging.info("[Pipeline] Cycle completed successfully. Articles published and emails dispatched.")
-        logging.info("[Pipeline] Background workers are synthesizing FLUX.1 images asynchronously.")
-        logging.info("=" * 65)
+        logging.info("=" * 78)
+        logging.info("[Pipeline] Targeted micro-dispatch cycle completed successfully.")
+        # Log enterprise quota telemetry banner
+        telemetry_banner = telemetry_tracker.get_telemetry_banner(
+            coordinator.raw_keys,
+            coordinator.key_index,
+            active_model
+        )
+        logging.info("\n" + telemetry_banner)
+        logging.info("=" * 78)
         return True
 
     except Exception as e:
         logging.error(f"[Pipeline] Pipeline terminated with error: {str(e)}")
         return False
 
-async def run_daily_cycle():
+async def run_daily_cycle(target_category: str = None):
     """Runs pipeline cycles with automated retry backoff on upstream network failures."""
     while True:
-        success = await run_pipeline()
+        success = await run_pipeline(target_category=target_category)
         if success:
             logging.info("[Scheduler] Pipeline run concluded successfully.")
             break
@@ -166,14 +186,22 @@ if __name__ == "__main__":
     api_thread = threading.Thread(target=start_api_server, daemon=True)
     api_thread.start()
 
+    # Check for manual category override (e.g. --category=Finance or --category=Geopolitics)
+    target_cat = None
+    for arg in sys.argv:
+        if arg.startswith("--category="):
+            target_cat = arg.split("=", 1)[1].strip()
+        elif arg == "--category" and sys.argv.index(arg) + 1 < len(sys.argv):
+            target_cat = sys.argv[sys.argv.index(arg) + 1].strip()
+
     if "--once" in sys.argv:
-        logging.info("[CLI] Executing single autonomous publish run (--once flag provided)...")
-        asyncio.run(run_daily_cycle())
+        logging.info(f"[CLI] Executing single autonomous publish run (--once flag provided, category={target_cat or 'AUTO'})...")
+        asyncio.run(run_daily_cycle(target_category=target_cat))
         logging.info("[CLI] Autonomous single run completed. Exiting.")
         sys.exit(0)
     elif "--now" in sys.argv or "--run-now" in sys.argv:
-        logging.info("[CLI] Executing immediate on-demand run (--now flag provided)...")
-        asyncio.run(run_daily_cycle())
+        logging.info(f"[CLI] Executing immediate on-demand run (--now flag provided, category={target_cat or 'AUTO'})...")
+        asyncio.run(run_daily_cycle(target_category=target_cat))
         start_scheduler()
     elif "--api-only" in sys.argv or "--server-only" in sys.argv:
         logging.info("[CLI] Running in dedicated API server mode.")

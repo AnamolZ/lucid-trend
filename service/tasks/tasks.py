@@ -40,7 +40,8 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=300,
     task_soft_time_limit=240,
-    broker_connection_retry_on_startup=True,
+    broker_connection_retry_on_startup=False,
+    broker_connection_max_retries=1,
     worker_prefetch_multiplier=1,
 )
 
