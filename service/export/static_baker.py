@@ -34,6 +34,10 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
         img_bytes = base64.b64decode(encoded)
 
         for dest in target_dirs:
+            # The mobile client app must remain ultra-lean (<7MB); never bundle article images into mobile assets
+            if "news-pluk-application" in dest:
+                continue
+
             # Resolve public/images directory alongside public/api
             if dest.endswith("api") or dest.endswith("api" + os.sep):
                 img_dir = os.path.abspath(os.path.join(dest, "..", "images"))
