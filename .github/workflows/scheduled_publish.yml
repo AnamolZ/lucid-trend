@@ -44,7 +44,7 @@ jobs:
           ref: main
 
       - name: Install uv (Fast Package Manager)
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "lucid-trend/uv.lock"
