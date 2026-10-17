@@ -82,10 +82,13 @@ def resolve_active_slot(manual_category: str = None) -> Dict[str, Any]:
             "label": f"Manual Override: {CATEGORY_PILLARS[matched_key]['pillar']}"
         }
 
-    # Auto-resolve based on current EST hour
-    # UTC hour:
-    now_utc = datetime.now(timezone.utc)
-    est_hour = (now_utc.hour - 5) % 24  # Approximate EST offset
+    # Auto-resolve based on current US Eastern time (America/New_York) with fallback
+    try:
+        from zoneinfo import ZoneInfo
+        est_hour = datetime.now(ZoneInfo("America/New_York")).hour
+    except Exception:
+        now_utc = datetime.now(timezone.utc)
+        est_hour = (now_utc.hour - 5) % 24
 
     # Find the closest slot
     closest_slot = SLOT_SEQUENCE[0]

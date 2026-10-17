@@ -61,7 +61,7 @@ class TursoDBService:
     def execute(self, sql: str, args: list = None) -> dict:
         return self.execute_batch([{"sql": sql, "args": args or []}])
 
-    def delete_older_than_days(self, days: int = 14) -> int:
+    def delete_older_than_days(self, days: int = 90) -> int:
         """Purges articles older than `days` based on published_at or created_at."""
         if not self.http_url:
             return 0
@@ -76,7 +76,7 @@ class TursoDBService:
             logging.error(f"[TursoDB] Error purging old posts: {e}")
             return 0
 
-    def insert_documents(self, documents: list, purge_older_than_days: int = 14) -> list:
+    def insert_documents(self, documents: list, purge_older_than_days: int = 90) -> list:
         """Persists article documents into Turso 'posts' table."""
         if not self.http_url:
             return []

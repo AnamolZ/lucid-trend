@@ -100,6 +100,8 @@ def _send_push_via_api_webhook(title: str, post_id: str = None, extra_data: dict
 
     payload = {
         "id": str(post_id or ""),
+        "postId": str(post_id or ""),
+        "post_id": str(post_id or ""),
         "title": (title or "Breaking Technology Dispatch")[:120],
         "category": "News"
     }

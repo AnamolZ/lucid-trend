@@ -154,17 +154,8 @@ def are_articles_semantic_duplicates(doc_a: dict, doc_b: dict) -> bool:
     desc_inter = desc_a & desc_b
     desc_overlap = len(desc_inter) / min(len(desc_a), len(desc_b)) if (desc_a and desc_b) else 0
 
-    # Domain-specific core entity-predicate clusters:
-    has_cxmt_dram = ('cxmt' in inter and 'dram' in inter)
-    has_quantum_bottleneck = ('quantum' in inter and any(k in inter for k in ['bottleneck', '40x', 'scaling']))
-    has_weather_six_weeks = ('weather' in inter and any(k in inter for k in ['forecasting', 'weeks', 'six']))
-    has_openai_crypto = ('openai' in inter and any(k in inter for k in ['cryptography', 'cryptographic', 'security']))
-
+    # Robust generalized semantic deduplication based on lexical overlap and Jaccard similarity
     is_duplicate = (
-        has_cxmt_dram or
-        has_quantum_bottleneck or
-        has_weather_six_weeks or
-        has_openai_crypto or
         overlap >= 0.55 or
         jaccard >= 0.40 or
         (overlap >= 0.38 and len(inter) >= 3 and desc_overlap >= 0.20)

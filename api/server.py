@@ -11,7 +11,7 @@ import logging
 from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, Security, status, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -29,8 +29,13 @@ from config.logging_config import setup_logging
 load_dotenv()
 setup_logging()
 
-API_SECRET_KEY = os.getenv("API_SECRET_KEY", "lt_sec_default_key_2026")
-MASTER_PASSWORD = os.getenv("MASTER_PASSWORD", "lucidtrend1379")
+API_SECRET_KEY = os.getenv("API_SECRET_KEY")
+if not API_SECRET_KEY:
+    # Generate ephemeral key if none configured
+    API_SECRET_KEY = f"lt_sec_{secrets.token_hex(16)}"
+    logging.warning(f"[Security Notice] No API_SECRET_KEY found in .env; generated ephemeral key: {API_SECRET_KEY}")
+
+MASTER_PASSWORD = os.getenv("MASTER_PASSWORD")
 
 def update_env_api_key(new_key: str):
     """Safely updates or inserts API_SECRET_KEY in the .env file on disk."""
@@ -78,9 +83,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Expose temporary directory as static route for file downloads
 ensure_temp_dir()
-app.mount("/temp", StaticFiles(directory=TEMP_DIR), name="temp")
+
+@app.get("/temp/{filename}", dependencies=[Depends(verify_api_key)])
+async def get_temp_file(filename: str):
+    """Securely streams generated temporary files to authenticated clients with path traversal prevention."""
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(TEMP_DIR, safe_filename)
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return FileResponse(file_path)
 
 class PipelineRequest(BaseModel):
     """Execution parameters for modular pipeline runs."""
@@ -290,13 +302,13 @@ async def test_push_endpoint(req: PushTestRequest):
         "post_id": req.post_id
     }
 
-@app.post("/api/v1/auth/rotate-key")
+@app.post("/api/v1/auth/rotate-key", dependencies=[Depends(verify_api_key)])
 async def rotate_key_endpoint(req: RotateKeyRequest, request: Request):
-    """Regenerates the system API secret key authenticated by master password, immediately revoking the old key."""
+    """Regenerates the system API secret key authenticated by current key and master password, immediately revoking the old key."""
     global API_SECRET_KEY
     client_ip = request.client.host if request.client else "unknown"
 
-    if req.master_password != MASTER_PASSWORD:
+    if MASTER_PASSWORD and req.master_password != MASTER_PASSWORD:
         logging.warning(
             f"[Security Alert] Unauthorized API key rotation attempt from {client_ip} rejected! Invalid master password."
         )
