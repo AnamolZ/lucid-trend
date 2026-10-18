@@ -91,6 +91,7 @@ jobs:
           uv run python -c "from service.export.static_baker import bake_static_payloads; res = bake_static_payloads(); print('Baked payloads:', res)"
 
       - name: Deploy Flat CDN Assets to news-pluk
+        id: deploy_cdn
         working-directory: news-pluk
         run: |
           git config --global user.name "Anamol"
@@ -98,13 +99,16 @@ jobs:
           git add public/api public/images public/audio
           if git diff --staged --quiet; then
             echo "No new static dispatches to deploy."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
           else
             git commit -m "chore(cdn): publish new editorial dispatches and baked audio"
             git push origin main
             echo "Successfully deployed new static dispatches to Vercel CDN Edge!"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Dispatch Rich Push Notifications to Mobile App
+        if: steps.deploy_cdn.outputs.has_changes == 'true'
         working-directory: lucid-trend
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
