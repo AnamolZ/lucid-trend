@@ -2,7 +2,16 @@ name: Autonomous NewsPluk Publishing Engine
 
 on:
   schedule:
-    # Every 3 hours continuous micro-dispatch cycle (UTC: 02:00, 05:00, 08:00, 11:00, 14:00, 17:00, 20:00, 23:00)
+    # Autonomous 8-slot 3-hour micro-dispatch cycle (UTC: 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00)
+    # Times (Asia/Kathmandu NPT) & Target Category Pillars:
+    # 00:00 UTC (05:45 NPT / 20:00 EDT) -> Technology, AI & Scientific Research
+    # 03:00 UTC (08:45 NPT / 23:00 EDT) -> Geopolitics, Defense & Global Security
+    # 06:00 UTC (11:45 NPT / 02:00 EDT) -> Finance & Global Markets
+    # 09:00 UTC (14:45 NPT / 05:00 EDT) -> Technology, AI & Scientific Research
+    # 12:00 UTC (17:45 NPT / 08:00 EDT) -> Geopolitics, Defense & Global Security
+    # 15:00 UTC (20:45 NPT / 11:00 EDT) -> Finance & Global Markets
+    # 18:00 UTC (23:45 NPT / 14:00 EDT) -> Technology, AI & Scientific Research
+    # 21:00 UTC (02:45 NPT / 17:00 EDT) -> Finance & Global Markets
     - cron: '0 */3 * * *'
   workflow_dispatch:
     inputs:

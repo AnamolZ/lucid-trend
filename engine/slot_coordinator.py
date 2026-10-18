@@ -90,11 +90,12 @@ def resolve_active_slot(manual_category: str = None) -> Dict[str, Any]:
         now_utc = datetime.now(timezone.utc)
         est_hour = (now_utc.hour - 5) % 24
 
-    # Find the closest slot
+    # Find the closest slot using 24h circular distance
     closest_slot = SLOT_SEQUENCE[0]
     min_diff = 999
     for s in SLOT_SEQUENCE:
-        diff = abs(est_hour - s["hour_est"])
+        raw_diff = abs(est_hour - s["hour_est"])
+        diff = min(raw_diff, 24 - raw_diff)
         if diff < min_diff:
             min_diff = diff
             closest_slot = s
