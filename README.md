@@ -40,6 +40,21 @@ flowchart LR
 
 ---
 
+## Autonomous Publishing Schedule
+
+LucidTrend operates on an autonomous 8-slot, 3-hour micro-dispatch cycle synchronized globally. Each slot targets a specific intelligence pillar anchored to international market hours and developer activity cycles.
+
+| Slot | UTC Time | Nepal Time (NPT, UTC+5:45) | Target Category Pillar | Editorial Theme / Focus |
+| :---: | :---: | :---: | :--- | :--- |
+| **#1** | `00:00 UTC` | **05:45 AM NPT** | **Technology, AI & Research** | Scientific & Security Breakthroughs |
+| **#2** | `03:00 UTC` | **08:45 AM NPT** | **Geopolitics & Defense** | Overnight Diplomatic & Strategic Shifts |
+| **#3** | `06:00 UTC` | **11:45 AM NPT** | **Finance & Global Markets** | Global, Asian & European Market Intelligence |
+| **#4** | `09:00 UTC` | **02:45 PM NPT** | **Technology, AI & Research** | Morning Engineering & Systems Releases |
+| **#5** | `12:00 UTC` | **05:45 PM NPT** | **Geopolitics & Defense** | Pre-Market Geopolitical Intelligence |
+| **#6** | `15:00 UTC` | **08:45 PM NPT** | **Finance & Global Markets** | Post-Open Market Volatility & Trends |
+| **#7** | `18:00 UTC` | **11:45 PM NPT** | **Technology, AI & Research** | Midday Frontier Tech & AI Architecture |
+| **#8** | `21:00 UTC` | **02:45 AM NPT** | **Finance & Global Markets** | US Market Close Digest & Macro Movements |
+
 ## Detailed Documentation
 
 For in-depth explanations, configuration guides, and complete operational instructions:
