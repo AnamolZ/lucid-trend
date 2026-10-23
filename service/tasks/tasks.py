@@ -17,7 +17,6 @@ from config.logging_config import setup_logging
 setup_logging()
 load_dotenv()
 
-HUGGING_FACE_TOKEN = os.getenv("HUGGING_FACE_TOKENS") or os.getenv("HUGGING_FACE_TOKEN") or os.getenv("HF_TOKEN")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_USER = os.getenv("SMTP_USER")
 AUTHOR = {
@@ -91,7 +90,7 @@ def generate_image_task(item: dict) -> dict:
         )
 
     image_url = None
-    if generation_prompt and HUGGING_FACE_TOKEN:
+    if generation_prompt:
         try:
             image_url = huggingface_image(prompt=generation_prompt, max_rounds=1, wait_seconds=0)
         except Exception as e:

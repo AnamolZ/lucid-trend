@@ -72,11 +72,10 @@ jobs:
           GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-          HUGGING_FACE_TOKENS: ${{ secrets.HUGGING_FACE_TOKENS }}
           CLOUDFLARE_ACCOUNTS: ${{ secrets.CLOUDFLARE_ACCOUNTS }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'lt_sec_f30fc7a1ea1603eba5a4c6458f6ec307' }}
           RETENTION_DAYS: ${{ vars.RETENTION_DAYS || '7' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}

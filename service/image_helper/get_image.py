@@ -243,98 +243,6 @@ def generate_pollinations_image(prompt: str) -> str:
     return None
 
 
-class HuggingFaceKeyCoordinator:
-    """Coordinates key rotation, retry cycles, and backoff pauses for FLUX.1 generation."""
-
-    def __init__(self):
-        self.bad_keys = {}  # token -> timestamp
-        self.key_index = 0
-
-    def get_tokens(self, token_hint: str = None) -> list:
-        """Parses and deduplicates Hugging Face access tokens from parameters and environment."""
-        raw = []
-        if token_hint:
-            raw.extend(token_hint.split(","))
-        env_tokens = (
-            os.getenv("HUGGING_FACE_TOKENS")
-            or os.getenv("HUGGING_FACE_TOKEN")
-            or os.getenv("HF_TOKEN")
-            or ""
-        )
-        if env_tokens:
-            raw.extend(env_tokens.split(","))
-
-        seen = set()
-        cleaned = []
-        for t in raw:
-            t = t.strip()
-            if t and t not in seen:
-                seen.add(t)
-                cleaned.append(t)
-        return cleaned
-
-    def generate_image(self, prompt: str, token_hint: str = None, max_rounds: int = 1, wait_seconds: int = 0) -> str:
-        """Generates an image via FLUX.1-schnell, rotating through active keys."""
-        tokens = self.get_tokens(token_hint)
-        if not tokens:
-            return None
-
-        now = time.time()
-        self.bad_keys = {k: ts for k, ts in self.bad_keys.items() if now - ts < 1800}
-
-        active_tokens = [k for k in tokens if k not in self.bad_keys]
-        if not active_tokens:
-            logging.info("[HuggingFace] All HF tokens currently on cooldown due to quota exhaustion.")
-            return None
-
-        try:
-            from huggingface_hub import InferenceClient
-        except ImportError:
-            logging.warning("[HuggingFace] huggingface_hub package not installed.")
-            return None
-
-        for round_num in range(1, max_rounds + 1):
-            active_tokens = [k for k in tokens if k not in self.bad_keys]
-            if not active_tokens:
-                break
-
-            total_keys = len(active_tokens)
-            start_idx = self.key_index % total_keys
-
-            for offset in range(total_keys):
-                idx = (start_idx + offset) % total_keys
-                token = active_tokens[idx]
-                masked = token[:6] + "..." + token[-4:] if len(token) > 10 else "***"
-                key_pos = tokens.index(token) + 1
-
-                try:
-                    logging.info(f"[HuggingFace] Requesting FLUX.1 with Key #{key_pos} ({masked})...")
-                    client = InferenceClient(token=token)
-                    image = client.text_to_image(prompt=prompt, model="black-forest-labs/FLUX.1-schnell")
-                    buf = io.BytesIO()
-                    image.save(buf, format="PNG")
-                    buf.seek(0)
-                    encoded = base64.b64encode(buf.read()).decode("utf-8")
-
-                    self.key_index = idx
-                    logging.info(f"[HuggingFace] Generated image successfully via FLUX.1 (Key #{key_pos}).")
-                    return f"data:image/png;base64,{encoded}"
-
-                except Exception as e:
-                    err_msg = str(e)
-                    logging.warning(f"[HuggingFace] Key #{key_pos} failed: {err_msg}")
-                    if any(code in err_msg for code in ["401", "402", "403", "Payment Required", "Invalid username or password"]):
-                        self.bad_keys[token] = time.time()
-
-            if round_num < max_rounds and wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-        return None
-
-
-hf_coordinator = HuggingFaceKeyCoordinator()
-
-
 def huggingface_image(
     hf_token: str = None,
     prompt: str = None,
@@ -344,12 +252,11 @@ def huggingface_image(
     max_rounds: int = 1,
     wait_seconds: int = 0
 ) -> str:
-    """Universal online image generation entry point with story grounding and multi-provider cascade.
+    """Universal online image generation entry point with story grounding and Cloudflare AI pool.
 
     Cascade Priority:
     1. Cloudflare Workers AI Account Pool (Multi-account rotation with FLUX and SDXL-Lightning)
-    2. Hugging Face FLUX.1-schnell (if active credits exist)
-    3. Pollinations.ai FLUX (High-Res 16:9 Zero-Auth Infinite Online Fallback)
+    2. Pollinations.ai FLUX (High-Res 16:9 Zero-Auth Infinite Online Fallback)
     """
     if prompt is None and hf_token is not None:
         prompt = hf_token
@@ -370,17 +277,7 @@ def huggingface_image(
     if cf_img:
         return cf_img
 
-    # Tier 2: Hugging Face FLUX (rotates keys, fails fast if credits exhausted)
-    hf_img = hf_coordinator.generate_image(
-        prompt=effective_prompt,
-        token_hint=hf_token,
-        max_rounds=max_rounds,
-        wait_seconds=wait_seconds
-    )
-    if hf_img:
-        return hf_img
-
-    # Tier 3: Pollinations.ai FLUX Online Fallback (Infinite, 100% online AI)
+    # Tier 2: Pollinations.ai FLUX Online Fallback (Infinite, 100% online AI)
     fallback_img = generate_pollinations_image(effective_prompt)
     if fallback_img:
         return fallback_img
