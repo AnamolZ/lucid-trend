@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from engine.root_agent import RootAgentEngine
 from service.data_cleaning.gemini import fast_extract, detect_duplicates
-from service.image_helper.get_image import huggingface_image, hf_coordinator
+from service.image_helper.get_image import huggingface_image, cf_coordinator
 from service.tursodb.client import TursoDBService
 from service.posts.insert_posts import insert_posts
 from service.emails.notify_subscriber import notify_subscribers
@@ -129,7 +129,7 @@ async def get_system_status():
     """Returns real-time health metrics, active models, key statuses, and temp dir stats."""
     active_key = get_active_key()
     masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "***"
-    hf_tokens = hf_coordinator.get_tokens()
+    cf_accounts = cf_coordinator.get_accounts()
 
     temp_files = os.listdir(TEMP_DIR) if os.path.exists(TEMP_DIR) else []
     scheduled_runs = get_active_schedule()
@@ -139,8 +139,8 @@ async def get_system_status():
         "service": "LucidTrend Autonomous System",
         "active_gemini_model": get_active_model(),
         "active_gemini_key": masked_key,
-        "huggingface_keys_count": len(hf_tokens),
-        "huggingface_active_key_index": hf_coordinator.key_index + 1,
+        "cloudflare_accounts_count": len(cf_accounts),
+        "cloudflare_active_account_index": cf_coordinator.account_index + 1,
         "temp_files_count": len(temp_files),
         "scheduled_daily_runs": scheduled_runs,
         "schedule_interval": "12 hours (2 runs per day)",

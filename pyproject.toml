@@ -8,7 +8,6 @@ dependencies = [
     "aiosmtplib>=5.0.0",
     "google-adk>=1.19.0",
     "google-generativeai>=0.8.5",
-    "huggingface-hub>=1.1.6",
     "pillow>=12.0.0",
     "python-dotenv>=1.2.1",
     "schedule>=1.2.2",
