@@ -105,16 +105,7 @@ async def synthesize_audio_async(
                 except Exception as mirror_err:
                     logging.warning(f"[AudioSynthesizer] Failed mirroring audio to {dest_dir}: {mirror_err}")
 
-            # Optional: Upload to Cloudflare R2 Object Storage for zero-egress cloud hosting
-            r2_url = ""
-            try:
-                from service.storage.r2_client import r2_service
-                if r2_service.is_configured():
-                    r2_url = r2_service.upload_bytes(file_bytes, f"audio/{filename}", content_type="audio/mp4")
-            except Exception as r2_err:
-                logging.warning(f"[AudioSynthesizer] R2 upload warning for '{post_id}': {r2_err}")
-
-            audio_url = r2_url if r2_url else f"/audio/{filename}"
+            audio_url = f"/audio/{filename}"
             logging.info(f"[AudioSynthesizer] Successfully synthesized {len(file_bytes)} bytes audio: {audio_url}")
 
             # Update Turso DB record

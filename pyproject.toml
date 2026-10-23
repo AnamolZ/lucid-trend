@@ -19,6 +19,5 @@ dependencies = [
     "requests>=2.31.0",
     "firebase-admin>=6.5.0",
     "edge-tts>=7.3.1",
-    "boto3>=1.43.118",
 ]
 

@@ -33,16 +33,6 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
         filename = f"{post_id}.{ext}"
         img_bytes = base64.b64decode(encoded)
 
-        # Optional: Upload to Cloudflare R2 Object Storage for global zero-egress hosting
-        try:
-            from service.storage.r2_client import r2_service
-            if r2_service.is_configured():
-                r2_img = r2_service.upload_bytes(img_bytes, f"images/{filename}", content_type=f"image/{ext}")
-                if r2_img:
-                    return r2_img
-        except Exception as r2_err:
-            logging.warning(f"[StaticBaker] R2 upload warning for '{post_id}': {r2_err}")
-
         for dest in target_dirs:
             # Resolve public/images directory alongside public/api
             if dest.endswith("api") or dest.endswith("api" + os.sep):
