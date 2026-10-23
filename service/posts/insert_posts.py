@@ -13,10 +13,25 @@ from service.export.static_baker import bake_static_payloads
 
 _fallback_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="AsyncWorker")
 
+import re
 import hashlib
 import threading
 
 TOPIC_FALLBACK_POOLS = {
+    "crypto": [
+        "https://images.unsplash.com/photo-1621416894569-0f39ed31d247?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1622979135225-d2ba269bc1df?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "finance": [
+        "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80",
+    ],
+    "geopolitics": [
+        "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=80",
+    ],
     "quantum": [
         "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=1200&q=80",
         "https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&w=1200&q=80",
@@ -65,7 +80,13 @@ def get_topic_fallback_image(title: str = "", description: str = "", category: l
     """Deterministically returns a unique, topic-relevant high-resolution image for every article."""
     corpus = f"{title or ''} {description or ''} {' '.join(category) if isinstance(category, list) else ''}".lower()
 
-    if any(k in corpus for k in ["quantum", "qubit", "cryostat", "superconductor"]):
+    if any(k in corpus for k in ["bitcoin", "crypto", "ethereum", "blockchain", "solana", "stablecoin", "usdc", "usdt", "defi"]):
+        pool = TOPIC_FALLBACK_POOLS["crypto"]
+    elif any(k in corpus for k in ["swift", "banking", "treasury", "settlement", "liquidity", "forex", "etf", "capital", "inflation", "bond", "yield", "fed"]):
+        pool = TOPIC_FALLBACK_POOLS["finance"]
+    elif any(k in corpus for k in ["geopolitics", "diplomacy", "treaty", "sanctions", "sovereignty", "nato", "summit"]):
+        pool = TOPIC_FALLBACK_POOLS["geopolitics"]
+    elif any(k in corpus for k in ["quantum", "qubit", "cryostat", "superconductor"]):
         pool = TOPIC_FALLBACK_POOLS["quantum"]
     elif any(k in corpus for k in ["robot", "humanoid", "actuator", "drone", "embodied"]):
         pool = TOPIC_FALLBACK_POOLS["robotics"]
@@ -75,7 +96,7 @@ def get_topic_fallback_image(title: str = "", description: str = "", category: l
         pool = TOPIC_FALLBACK_POOLS["cloud"]
     elif any(k in corpus for k in ["security", "vulnerability", "hack", "cyber", "malware", "firewall"]):
         pool = TOPIC_FALLBACK_POOLS["security"]
-    elif any(k in corpus for k in ["code", "developer", "ide", "compiler", "rust", "python", "software", "api"]):
+    elif bool(re.search(r'\b(code|developer|ide|compiler|rust|python|software|api)\b', corpus)):
         pool = TOPIC_FALLBACK_POOLS["software"]
     else:
         pool = TOPIC_FALLBACK_POOLS["general"]
