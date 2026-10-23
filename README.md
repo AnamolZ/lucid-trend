@@ -1,31 +1,30 @@
 ## LucidTrend
 
-An autonomous technology intelligence engine that continuously scouts developer ecosystems, synthesizes high-impact technical analysis from breaking primary sources, generates custom photorealistic visual assets, and delivers clean editorial newsletters into one unified system.
+An autonomous technology intelligence engine that continuously scouts developer ecosystems, synthesizes high-impact technical analysis from breaking primary sources, generates custom photorealistic visual assets, narrates full audio briefings, and pre-renders static edge payloads into a unified global publication system.
 
 ---
 
 ## System Overview
 
-### 1. Research and Publishing Pipeline
+### 1. Research, Multimodal Synthesis & Edge Delivery Pipeline
 ```mermaid
 flowchart LR
-    A["WebScout 24h RSS<br/>Primary Tech Sources"] --> B["NewsCoordinator<br/>Gemini 3.7 Editorial Engine"]
-    B --> C["Data Extraction<br/>Local JSON Parsing"]
-    C --> D["Immediate Publish<br/>MongoDB Atlas"]
-    D --> E["Editorial Newsletter<br/>Concise Briefing Cards"]
-    D --> F["Mobile Push (FCM)<br/>Real-Time App Broadcast"]
+    A["WebScout 24h RSS<br/>Primary Intelligence"] --> B["NewsCoordinator<br/>Gemini 3.7 Flash Engine"]
+    B --> C["Data Extraction<br/>Zero-Token Parser"]
+    C --> D["Turso libSQL<br/>7-Day Retention DB"]
+    D --> E["Multimodal Workers<br/>Cloudflare FLUX & Edge TTS"]
+    E --> F["Static Edge Baker<br/>Vercel CDN Payloads"]
+    F --> G["Newsletter & Push<br/>Brevo SMTP & Firebase FCM"]
 ```
 
 ### 2. High-Precision Image Synthesis Cascade
 ```mermaid
 flowchart LR
-    A["Article Ingested<br/>Title & Metadata"] --> B["Visual Grounding Engine<br/>build_grounded_flux_prompt"]
-    B --> C{"Tier 1: Cloudflare<br/>Workers AI FLUX-1"}
-    C -->|Success ~2s| F["In-Place Update<br/>MongoDB Image"]
-    C -->|Fallback| D{"Tier 2: Hugging Face<br/>FLUX.1-schnell"}
-    D -->|Success| F
-    D -->|Fallback| E["Tier 3: Pollinations.ai<br/>Zero-Auth 16:9 FLUX"]
-    E --> F
+    A["Article Ingested<br/>Title & Visual Prompt"] --> B["Visual Grounding Engine<br/>build_grounded_flux_prompt"]
+    B --> C{"Tier 1: Cloudflare<br/>Workers AI FLUX Pool<br/>(Multi-Account Rotation)"}
+    C -->|Success ~3-5s| E["Turso DB & Flat CDN Assets<br/>/images/post-id.jpg"]
+    C -->|Fallback| D["Tier 2: Pollinations.ai<br/>Zero-Auth 16:9 FLUX"]
+    D --> E
 ```
 
 ### 3. Interactive Management & CLI
@@ -33,7 +32,7 @@ flowchart LR
 flowchart LR
     A["Operator / Developer<br/>Terminal CLI"] <-->|Authenticated API| B["FastAPI Management Server<br/>Port 8000"]
     B --> C["Modular Pipeline Runs<br/>--without flags"]
-    B --> D["On-Demand Image Gen<br/>FLUX.1 Visual Assets"]
+    B --> D["On-Demand Image Gen<br/>Cloudflare FLUX Assets"]
     B --> E["Mobile Push Testing<br/>Firebase Topic Broadcast"]
     B --> F["Security & Key Rotation<br/>Master Password Auth"]
 ```
@@ -59,8 +58,8 @@ LucidTrend operates on an autonomous 8-slot, 3-hour micro-dispatch cycle synchro
 
 For in-depth explanations, configuration guides, and complete operational instructions:
 
-* **[Architecture & Mechanism Guide (docs/mechanism.md)](docs/mechanism.md)**: Deep dive into the 2-stage grounded intelligence pipeline, Cloudflare Workers AI FLUX cascade, story-grounded visual prompt engineering, and the Firebase Cloud Messaging mobile push architecture.
-* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Step-by-step setup guide for native and Docker environments, `.env` configuration (Cloudflare, Gemini, Mongo, SMTP, Firebase), CLI commands, and REST API documentation.
+* **[Architecture & Mechanism Guide (docs/mechanism.md)](docs/mechanism.md)**: Deep dive into the 2-stage grounded intelligence pipeline, Cloudflare Workers AI FLUX multi-account pool, story-grounded visual prompt engineering, Turso libSQL edge database, Edge TTS narration, and Firebase Cloud Messaging mobile push architecture.
+* **[User & Operations Guide (docs/use.md)](docs/use.md)**: Step-by-step setup guide for native and Docker environments, `.env` configuration (Cloudflare, Gemini, Turso, SMTP, Firebase), CLI commands, and REST API documentation.
 
 ---
 

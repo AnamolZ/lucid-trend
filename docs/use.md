@@ -77,13 +77,13 @@ When an operator rotates the key using the **Master Password**, the old API key 
 Create or update your `.env` file in the project root:
 
 ```env
-# 1. MongoDB Database Settings
-MONGO_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/?appName=Cluster0
-DATABASE_NAME=portfolio_db
-COLLECTION_NAME=posts
+# 1. Turso libSQL Edge Database Settings
+TURSO_DATABASE_URL=libsql://your-database-name.turso.io
+TURSO_AUTH_TOKEN=your_turso_auth_token
+RETENTION_DAYS=7
 
-# 2. Google Gemini API Keys (comma-separated keys supported for failover)
-GOOGLE_API_KEY=your_gemini_key_1,your_gemini_key_2
+# 2. Google Gemini API Keys (comma-separated keys supported for multi-key pool rotation)
+GOOGLE_API_KEY=your_gemini_key_1,your_gemini_key_2,your_gemini_key_3
 GEMINI_MODEL=gemini-3.7-flash
 
 # 3. SMTP Newsletter Settings (Brevo / SendGrid / Postmark)
@@ -95,18 +95,17 @@ SMTP_PASSWORD=your_smtp_relay_key
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 
-# 5. Image Generation (Cloudflare Workers AI FLUX & Multi-Provider Cascade)
-CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
-CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
-HUGGING_FACE_TOKENS=hf_token_1,hf_token_2
-HUGGING_FACE_TOKEN=hf_token_1
+# 5. Image Generation (Cloudflare Workers AI Multi-Account Pool)
+CLOUDFLARE_ACCOUNTS=acc_id_1:token_1,acc_id_2:token_2,acc_id_3:token_3
+CLOUDFLARE_API_TOKEN=your_primary_cloudflare_api_token
+CLOUDFLARE_ACCOUNT_ID=your_primary_cloudflare_account_id
 
 # 6. Firebase Cloud Messaging (FCM Mobile Push)
 FIREBASE_CREDENTIALS_PATH=firebase-service-account.json
 FIREBASE_NOTIFICATION_TOPIC=all_news
 
 # 7. Management API & CLI Security
-API_SECRET_KEY=lt_sec_9293a9b1edbc0db1cad7db0cb8b0eb20
+API_SECRET_KEY=lt_sec_f30fc7a1ea1603eba5a4c6458f6ec307
 MASTER_PASSWORD=lucidtrend1379
 SERVER_HOST=0.0.0.0
 SERVER_PORT=8000
@@ -348,14 +347,14 @@ Returns real-time health metrics, active model status, key rotation indexes, and
   {
     "status": "online",
     "service": "LucidTrend Autonomous System",
-    "active_gemini_model": "gemini-2.5-flash",
-    "active_gemini_key": "AQ.Ab8...9ISw",
-    "huggingface_keys_count": 4,
-    "huggingface_active_key_index": 1,
+    "active_gemini_model": "gemini-3.7-flash",
+    "active_gemini_key": "AQ.Ab8...FK2w",
+    "cloudflare_accounts_count": 4,
+    "cloudflare_active_account_index": 1,
     "temp_files_count": 0,
-    "scheduled_daily_runs": ["05:00", "17:00"],
-    "schedule_interval": "12 hours (2 runs per day)",
-    "timestamp": "2026-10-03 16:59:56"
+    "scheduled_daily_runs": ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"],
+    "schedule_interval": "3 hours (8 slots per day)",
+    "timestamp": "2026-10-23 20:30:00"
   }
   ```
 

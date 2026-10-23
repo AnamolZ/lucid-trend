@@ -1,6 +1,6 @@
 # LucidTrend System Architecture
 
-LucidTrend is an autonomous technology intelligence and publishing system. It continuously scouts global developer ecosystems, synthesizes comprehensive technical articles from breaking primary sources, generates custom photorealistic visual assets, updates a content database, dispatches clean editorial briefings to subscribers, and provides an authenticated command-line interface for interactive control.
+LucidTrend is an autonomous technology intelligence and publishing system. It continuously scouts global developer ecosystems, synthesizes comprehensive technical articles from breaking primary sources, generates custom photorealistic visual assets, synthesizes audio podcast briefings, updates an edge database, bakes immutable flat CDN payloads, dispatches clean editorial briefings to subscribers, and provides an authenticated command-line interface for interactive control.
 
 This document details the internal mechanics, algorithmic decisions, and communication protocols governing the entire architecture.
 
@@ -8,7 +8,7 @@ This document details the internal mechanics, algorithmic decisions, and communi
 
 ## 1. End-to-End System Architecture
 
-The LucidTrend ecosystem is divided into autonomous background services, external model inference networks, storage engines, delivery channels, and an interactive management layer.
+The LucidTrend ecosystem is divided into autonomous background services, external model inference networks, edge storage engines, delivery channels, and an interactive management layer.
 
 ```mermaid
 flowchart TD
@@ -21,7 +21,7 @@ flowchart TD
     end
 
     subgraph Orchestration ["Core Scheduler & Pipeline (main.py)"]
-        Scheduler["Schedule Daemon (05:00 & 17:00)"]
+        Scheduler["GitHub Actions Schedule (8 Slots / 3h Cycle)"]
         Cleaner["Hourly Temp Directory Cleaner"]
         Runner["Pipeline Orchestrator (run_pipeline)"]
         API --> |Modular Trigger (--with/--without)| Runner
@@ -41,16 +41,18 @@ flowchart TD
         LocalParser["Zero-Token Fast Extractor (fast_extract)"]
     end
 
-    subgraph Persistence ["Immediate Publishing Layer"]
-        MongoService["MongoDB Service (MongoDBService)"]
-        MongoCluster[("MongoDB Atlas (posts collection)")]
-        MongoService --> |1. Insert with Default Image| MongoCluster
+    subgraph Persistence ["Immediate Publishing & Retention Layer"]
+        TursoService["Turso libSQL Service (TursoDBService)"]
+        TursoDB[("Turso Master DB (posts table)")]
+        RetentionJanitor["7-Day Retention Purge Janitor"]
+        TursoService --> |1. Insert & Upsert Post| TursoDB
+        TursoService --> RetentionJanitor
     end
 
     subgraph Newsletter ["Editorial Delivery Engine"]
         EmailWorker["Newsletter Dispatcher (send_email_task)"]
         SMTPRelay["SMTP Relay Server (TLS)"]
-        Subscribers[("Verified Subscribers")]
+        Subscribers[("Verified Subscribers (Turso DB)")]
         EmailWorker --> |Fetch Verified Addresses| Subscribers
         EmailWorker --> |Transmit Concise HTML Cards| SMTPRelay
     end
@@ -63,93 +65,74 @@ flowchart TD
         FCM --> |Push Alert + Deep Link| MobileDevices
     end
 
-    subgraph Imagery ["3-Tier High-Precision Image Cascade"]
-        ImageWorker["Celery Worker / Fallback Thread"]
+    subgraph Multimodal ["High-Precision Multimodal & Static Edge Layer"]
+        AssetWorker["Worker Threads / Celery"]
         VisualDirector["Visual Grounding Engine (build_grounded_flux_prompt)"]
-        CF_AI["Tier 1: Cloudflare Workers AI FLUX-1-schnell"]
-        HF_AI["Tier 2: Hugging Face FLUX.1 (Multi-Key)"]
-        Pollinations["Tier 3: Pollinations.ai FLUX (Zero-Auth 16:9)"]
+        CF_AI["Tier 1: Cloudflare Workers AI FLUX Pool (Multi-Account)"]
+        Pollinations["Tier 2: Pollinations.ai FLUX (Zero-Auth 16:9)"]
+        TTS["Microsoft Edge Neural TTS (.m4a Narration)"]
+        StaticBaker["Static Edge Baker (Flat CDN Payloads)"]
+        EdgeCDN["Vercel Edge CDN (news-pluk)"]
         
-        ImageWorker --> VisualDirector
+        AssetWorker --> VisualDirector
         VisualDirector --> CF_AI
-        CF_AI -.->|Fallback| HF_AI
-        HF_AI -.->|Fallback| Pollinations
-        CF_AI --> |In-Place Base64 Update| MongoCluster
-        HF_AI --> |In-Place Base64 Update| MongoCluster
-        Pollinations --> |In-Place Base64 Update| MongoCluster
+        CF_AI -.->|Fallback| Pollinations
+        CF_AI --> TursoDB
+        Pollinations --> TursoDB
+        AssetWorker --> TTS --> TursoDB
+        TursoDB --> StaticBaker --> EdgeCDN
     end
-
-    Runner --> Intelligence
-    Intelligence --> LocalParser
-    LocalParser --> Persistence
-    Persistence --> Newsletter
-    Persistence --> Push
-    Persistence -.-> |Non-Blocking Trigger| Imagery
 ```
 
 ---
 
-## 2. Multi-Model Intelligence Engine and Cascading Failover
+## 2. Intelligence Synthesis & Free-Tier Resilience
 
-The intelligence subsystem synthesizes technical news articles using Google Agent Development Kit (ADK) and the Gemini family of language models, wrapped in a 45-second circuit breaker with automatic failover across multiple API keys and model tiers.
+To ensure continuous operation without API billing or quota halts, LucidTrend uses an automated **Model Tier & API Key Cascading Coordinator** (`KeyModelCoordinator`):
 
-```mermaid
-flowchart TD
-    Start([Pipeline Trigger]) --> Scout[Step 1: WebScout Fetches 24h RSS Intel]
-    Scout --> Dossier[Format Verified Real-Time Dossier]
-    Dossier --> InitAgent[Step 2: Initialize NewsCoordinator with Dossier]
-    InitAgent --> CheckActive[Read Active Model & Key from KeyModelCoordinator]
-    
-    subgraph FailoverLoop ["Cascading Failover Engine"]
-        Execute[Execute Editorial Synthesis via Google ADK]
-        Success{Success within 45s?}
-        Is429{Rate Limit or Quota Error 429?}
-        IsAuth{Key Invalid or Denied 401/403?}
-        RotateKey[Rotate to Next API Key in Pool]
-        CascadeModel[Cascade Down to Next Model Tier]
-    end
-
-    CheckActive --> Execute
-    Execute --> Success
-    Success -- Yes --> ReturnRaw[Return Synthesized JSON Articles]
-    Success -- No --> Is429
-    
-    Is429 -- Yes --> RotateKey
-    Is429 -- No --> IsAuth
-    
-    IsAuth -- Yes --> Blacklist[Blacklist Key for Session] --> RotateKey
-    IsAuth -- No --> CascadeModel
-    
-    RotateKey --> KeysRemaining{More Keys Available?}
-    KeysRemaining -- Yes --> Execute
-    KeysRemaining -- No --> CascadeModel
-    CascadeModel --> Execute
+```
+       [Request Dispatched: Gemini 3.7 Flash / Active Key]
+                               |
+                   Does Key Hit 429 Quota?
+                    /                  \
+                 (Yes)                 (No)
+                  |                     |
+     [Rotate to Next Key in Pool]   [Complete Synthesis]
+                  |
+         Are All Keys Exhausted?
+          /                   \
+       (Yes)                  (No)
+        |                      |
+[Cascade to Next Model Tier]  [Retry with New Key]
+(gemini-3.5-flash-lite)
 ```
 
-### Model Cascade Ladder
-
-| Tier | Model ID | Timeout | Primary Purpose |
+### Model Cascade Matrix
+| Model Tier | Model Name | Timeout Ceiling | Purpose |
 | :---: | :--- | :---: | :--- |
-| **Tier 1** | `gemini-3.7-flash` | 45s | Flagship hybrid reasoning, highly detailed technical journalism. |
-| **Tier 2** | `gemini-3.5-flash-lite` | 45s | High-efficiency fallback model for high-throughput synthesis. |
-| **Tier 3** | `gemini-3.1-flash-lite` | 45s | Resilient secondary fallback model. |
-| **Tier 4** | `gemini-flash-latest` | 45s | Ultimate fallback targeting Gemini Flash stable channel. |
+| **Tier 1** | `gemini-3.7-flash` | 75s | Flagship hybrid reasoning, highly detailed technical journalism. |
+| **Tier 2** | `gemini-3.5-flash-lite` | 45s | High-throughput low-latency fallback with minimal token overhead. |
+| **Tier 3** | `gemini-3.1-flash-lite` | 45s | Resilience safety net for elevated traffic spikes. |
+| **Tier 4** | `gemini-flash-latest` | 45s | General-purpose legacy fallback. |
+| **Tier 5** | `gemini-flash-lite-latest` | 45s | Terminal zero-cost tier. |
 
 ---
 
 ## 3. Asynchronous Decoupling Architecture
 
-To ensure immediate frontend availability and rapid email delivery, visual generation is completely decoupled from article persistence:
+To ensure immediate frontend availability and rapid email delivery, visual generation and audio narration are decoupled from core article persistence:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Scheduler as Scheduler / Operator
+    actor Scheduler as Scheduler / GitHub Actions
     participant Runner as run_pipeline()
-    participant Mongo as MongoDB Atlas
-    participant Email as Celery (send_email_task)
-    participant Celery as Celery (generate_image_task)
+    participant Turso as Turso libSQL Database
+    participant Email as Brevo SMTP Newsletter
+    participant Worker as Worker Thread / Celery
     participant CF as Cloudflare Workers AI FLUX
+    participant TTS as Edge Neural TTS
+    participant Baker as Static Edge Baker
 
     Scheduler->>Runner: Trigger Pipeline Cycle
     Runner->>Runner: 2-Stage Grounded Intelligence Synthesis
@@ -157,27 +140,28 @@ sequenceDiagram
     
     rect rgb(235, 248, 255)
         note right of Runner: Phase 1: Immediate Content Availability
-        Runner->>Mongo: insert_documents() [Default Placeholder Image]
-        Mongo-->>Runner: Confirm IDs Inserted
-        Runner->>Email: send_email_task.delay() [Asynchronous]
-        Runner->>Celery: generate_and_update_image_task.delay() [Asynchronous]
+        Runner->>Turso: insert_documents() [Single Source of Truth]
+        Turso-->>Runner: Confirm IDs Inserted & 7-Day Prune Executed
+        Runner->>Email: notify_subscribers() [Immediate Delivery]
+        Runner->>Worker: Dispatch Multimodal Generation
     end
     
-    note over Runner: Pipeline Cycle Finishes in ~30s Total
-    
-    critical Background Image Generation (~2-4 seconds)
-        Celery->>CF: Dispatch Grounded FLUX Prompt
-        CF-->>Celery: Return Base64 JPEG/PNG
-        Celery->>Mongo: update_post_image(post_id, new_image_url)
-        Note over Mongo: Post image field replaced in-place
+    critical Multimodal Asset Generation (~4-6 seconds)
+        Worker->>CF: Dispatch Grounded FLUX Prompt
+        CF-->>Worker: Return Base64 Image
+        Worker->>TTS: Synthesize Audio (.m4a)
+        TTS-->>Worker: Return Audio Path
+        Worker->>Turso: update_post_image & update_post_audio
+        Worker->>Baker: bake_static_payloads()
+        Baker-->>Turso: Extract /images/*.jpg & Write CDN feed.json
     end
 ```
 
 ---
 
-## 4. High-Precision Image Synthesis & 3-Tier Multi-Provider Cascade
+## 4. High-Precision Image Synthesis & Cloudflare AI Cascade
 
-Rather than relying on generic diffusion prompts that produce abstract floating dots in dark space, LucidTrend utilizes an automated **Visual Grounding Engine** paired with a resilient 3-tier cascade:
+Rather than relying on generic diffusion prompts that produce abstract floating dots in dark space, LucidTrend utilizes an automated **Visual Grounding Engine** paired with a resilient multi-account cascade:
 
 ```mermaid
 flowchart TD
@@ -191,26 +175,25 @@ flowchart TD
         Quantum_Domain[Gold-Plated Dilution Refrigerator Cryostats]
         Cyber_Domain[Panoramic SOC Security Operations Command Centers]
         Cloud_Domain[Cavernous Cloud Datacenter Server Halls]
+        Fin_Domain[Corporate Treasury Desks & Real-Time Flow Visualizers]
     end
     
     GroundPrompt --> DetectDomain
-    DetectDomain --> AI_Domain & Dev_Domain & Chip_Domain & Quantum_Domain & Cyber_Domain & Cloud_Domain
+    DetectDomain --> AI_Domain & Dev_Domain & Chip_Domain & Quantum_Domain & Cyber_Domain & Cloud_Domain & Fin_Domain
     
-    subgraph ProviderCascade ["3-Tier Provider Cascade"]
-        Tier1["Tier 1: Cloudflare Workers AI FLUX-1-schnell (~2.0s)"]
-        Tier2["Tier 2: Hugging Face FLUX.1 (Multi-Key)"]
-        Tier3["Tier 3: Pollinations.ai FLUX (Zero-Auth 16:9 Fallback)"]
+    subgraph ProviderCascade ["Cloudflare Multi-Account Cascade"]
+        Tier1["Tier 1: Cloudflare Workers AI FLUX Pool (~3-5s)<br/>(Rotates across multiple accounts with FLUX & SDXL)"]
+        Tier2["Tier 2: Pollinations.ai FLUX (Zero-Auth 16:9 Online Fallback)"]
     end
     
-    AI_Domain & Dev_Domain & Chip_Domain & Quantum_Domain & Cyber_Domain & Cloud_Domain --> Tier1
+    AI_Domain & Dev_Domain & Chip_Domain & Quantum_Domain & Cyber_Domain & Cloud_Domain & Fin_Domain --> Tier1
     
     Tier1 -->|Success 200 OK| ReturnImage[/Return Base64 Data URI/]
-    Tier1 -->|401/403/Error| Tier2
-    Tier2 -->|Success 200 OK| ReturnImage
-    Tier2 -->|402/Quota Exhausted| Tier3
-    Tier3 --> ReturnImage
+    Tier1 -->|All Accounts Depleted / Quota Hit| Tier2
+    Tier2 --> ReturnImage
     
-    ReturnImage --> UpdateDB[(Update Post in MongoDB Atlas)]
+    ReturnImage --> UpdateDB[(Update Post in Turso Master DB)]
+    UpdateDB --> StaticBake[Static Baker: Extract /images/post_id.jpg]
 ```
 
 ### Visual Grounding Principles
@@ -218,6 +201,7 @@ flowchart TD
 - **Developer Tools & Frameworks**: Software engineers in modern studios with ultra-wide screens displaying actual IDE code syntax, debug consoles, and twilight city views.
 - **Mathematical Reasoning & AI**: Modern research laboratories with illuminated formal logic blackboards and operator terminals.
 - **Quantum Computing**: Dilution cryostats with gold-plated plates and braided copper wiring in cleanroom environments.
+- **Institutional Finance & Crypto**: High-frequency trading command centers, cryptographic lattice telemetries, and dark obsidian interiors.
 
 ---
 
@@ -230,7 +214,7 @@ flowchart TD
     Articles[/Synthesized Articles/] --> Formatter["Editorial Card Formatter (_format_article_html)"]
     
     subgraph ContentAssembly ["Content Assembly"]
-        CategoryBadge["Category Badge (e.g. AI & ML)"]
+        CategoryBadge["Category Badge (e.g. Technology)"]
         Headline["High-Impact Clean Headline"]
         ConciseSummary["Concise 2-3 Sentence Analytical Summary"]
         ImpactBox["Key Engineering Impact Highlight Box"]
@@ -240,7 +224,7 @@ flowchart TD
     ContentAssembly --> FullBlocks[/Formatted Editorial Briefing Cards/]
     
     FullBlocks --> Template["Editorial Template (notify_subscriber_template)"]
-    Subscribers[("Verified Subscribers Collection")] --> EmailLoop["Delivery Loop (send_noreply_email)"]
+    Subscribers[("Verified Subscribers (Turso DB)")] --> EmailLoop["Delivery Loop (send_noreply_email)"]
     Template --> EmailLoop
     EmailLoop --> SMTP["Brevo SMTP Relay (TLS Port 587)"]
     SMTP --> Inboxes([Subscriber Inboxes])
@@ -257,7 +241,7 @@ To notify mobile readers immediately upon publication, LucidTrend integrates dir
 
 ```mermaid
 flowchart TD
-    Publish([New Articles Published to MongoDB Atlas]) --> NotifySub[notify_subscribers Pipeline]
+    Publish([New Articles Published to Turso DB]) --> NotifySub[notify_subscribers Pipeline]
     
     NotifySub --> CeleryQueue["Celery Task Queue (send_push_notifications_batch_task)"]
     
