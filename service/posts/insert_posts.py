@@ -263,10 +263,11 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
             except Exception as e:
                 logging.warning(f"[InsertPosts] Asset generation error: {e}")
 
-    # 3. Immediate Initial Static Payload Bake
-    try:
-        bake_static_payloads()
-    except Exception as bake_err:
-        logging.warning(f"[InsertPosts] Initial static bake warning: {bake_err}")
+    # 3. Initial Static Payload Bake (only if not already baked by awaited worker tasks)
+    if not (futures and (os.getenv("GITHUB_ACTIONS") or "--once" in sys.argv)):
+        try:
+            bake_static_payloads()
+        except Exception as bake_err:
+            logging.warning(f"[InsertPosts] Initial static bake warning: {bake_err}")
 
     return prepared_documents

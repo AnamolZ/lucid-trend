@@ -72,8 +72,8 @@ class AgentEngine:
                 active_key_num = coordinator.key_index + 1
                 logging.info(f"[{self.agent_name}] Processing query on '{self.model_name}' (Key #{active_key_num})...")
 
-                # Enforce a 45-second execution ceiling to prevent stalled external connections
-                events = await asyncio.wait_for(self.runner.run_debug(ask, quiet=True), timeout=45.0)
+                # Enforce a 75-second execution ceiling to prevent stalled external connections while allowing hybrid reasoning
+                events = await asyncio.wait_for(self.runner.run_debug(ask, quiet=True), timeout=75.0)
                 response = ""
 
                 for event in events:
@@ -97,9 +97,9 @@ class AgentEngine:
 
             except asyncio.TimeoutError:
                 logging.warning(
-                    f"[{self.agent_name}] Execution timed out after 45s on '{self.model_name}'. Initiating immediate failover..."
+                    f"[{self.agent_name}] Execution timed out after 75s on '{self.model_name}'. Initiating immediate failover..."
                 )
-                new_model, new_key = report_failure(self.model_name, self.api_key, error_code="Timeout (45s)")
+                new_model, new_key = report_failure(self.model_name, self.api_key, error_code="Timeout (75s)")
                 self.model_name = new_model
                 self.api_key = new_key
 
