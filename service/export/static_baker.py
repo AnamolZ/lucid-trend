@@ -33,6 +33,16 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
         filename = f"{post_id}.{ext}"
         img_bytes = base64.b64decode(encoded)
 
+        # Optional: Upload to Cloudflare R2 Object Storage for global zero-egress hosting
+        try:
+            from service.storage.r2_client import r2_service
+            if r2_service.is_configured():
+                r2_img = r2_service.upload_bytes(img_bytes, f"images/{filename}", content_type=f"image/{ext}")
+                if r2_img:
+                    return r2_img
+        except Exception as r2_err:
+            logging.warning(f"[StaticBaker] R2 upload warning for '{post_id}': {r2_err}")
+
         for dest in target_dirs:
             # Resolve public/images directory alongside public/api
             if dest.endswith("api") or dest.endswith("api" + os.sep):
@@ -66,6 +76,60 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
     except Exception as e:
         logging.warning(f"[StaticBaker] Error extracting base64 image for {post_id}: {e}")
         return image_data
+
+
+def prune_orphaned_assets(active_ids: set, target_dirs: list) -> int:
+    """Removes deleted posts' orphaned JSON, image, and audio files from static target directories."""
+    if not active_ids:
+        return 0
+
+    removed_total = 0
+    for dest in target_dirs:
+        # 1. Prune orphaned posts/{id}.json
+        posts_dir = os.path.join(dest, "posts")
+        if os.path.exists(posts_dir):
+            for fname in os.listdir(posts_dir):
+                if fname.endswith(".json"):
+                    post_id = fname[:-5]
+                    if post_id not in active_ids:
+                        try:
+                            os.remove(os.path.join(posts_dir, fname))
+                            removed_total += 1
+                        except Exception:
+                            pass
+
+        # 2. Prune orphaned images/{id}.* and audio/{id}.m4a
+        if dest.endswith("api") or dest.endswith("api" + os.sep):
+            img_dir = os.path.abspath(os.path.join(dest, "..", "images"))
+            audio_dir = os.path.abspath(os.path.join(dest, "..", "audio"))
+        else:
+            img_dir = os.path.abspath(os.path.join(dest, "images"))
+            audio_dir = os.path.abspath(os.path.join(dest, "audio"))
+
+        if os.path.exists(img_dir):
+            for fname in os.listdir(img_dir):
+                post_id = os.path.splitext(fname)[0]
+                if post_id not in active_ids and not fname.startswith("avatar") and not fname.startswith("logo") and not fname.startswith("favicon"):
+                    try:
+                        os.remove(os.path.join(img_dir, fname))
+                        removed_total += 1
+                    except Exception:
+                        pass
+
+        if os.path.exists(audio_dir):
+            for fname in os.listdir(audio_dir):
+                if fname.endswith(".m4a"):
+                    post_id = fname[:-4]
+                    if post_id not in active_ids:
+                        try:
+                            os.remove(os.path.join(audio_dir, fname))
+                            removed_total += 1
+                        except Exception:
+                            pass
+
+    if removed_total > 0:
+        logging.info(f"[StaticBaker] Pruned {removed_total} orphaned assets from disk.")
+    return removed_total
 
 
 def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
@@ -192,7 +256,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         except Exception as e:
             logging.error(f"[StaticBaker] Error writing feed.json to {dest}: {e}")
 
+    active_ids = {str(item.get("id")) for item in raw_posts if item.get("id")}
+    pruned_count = prune_orphaned_assets(active_ids, target_dirs)
+
     return {
         "total": len(raw_posts),
         "destinations": len(target_dirs),
+        "pruned": pruned_count,
     }

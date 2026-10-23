@@ -216,8 +216,8 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
 
     # 2. Write to Turso libSQL (Single Source of Truth)
     try:
-        turso_service = TursoDBService()
-        inserted_ids = turso_service.insert_documents(prepared_documents, purge_older_than_days=14)
+        retention = int(os.getenv("RETENTION_DAYS", "7"))
+        inserted_ids = turso_service.insert_documents(prepared_documents, purge_older_than_days=retention)
         logging.info(f"[InsertPosts] Published {len(inserted_ids)} articles to Turso Master DB.")
     except Exception as turso_err:
         logging.error(f"[InsertPosts] Turso insertion failed: {turso_err}")

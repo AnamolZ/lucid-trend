@@ -61,25 +61,33 @@ class TursoDBService:
     def execute(self, sql: str, args: list = None) -> dict:
         return self.execute_batch([{"sql": sql, "args": args or []}])
 
-    def delete_older_than_days(self, days: int = 90) -> int:
+    def delete_older_than_days(self, days: int = 7) -> int:
         """Purges articles older than `days` based on published_at or created_at."""
         if not self.http_url:
             return 0
-        cutoff_dt = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-        logging.info(f"[TursoDB] Purging posts older than {days} days (cutoff: {cutoff_dt})...")
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff_space = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"[TursoDB] Purging posts older than {days} days (cutoff: {cutoff_iso})...")
         try:
-            sql = "DELETE FROM posts WHERE created_at < ?;"
-            self.execute(sql, [cutoff_dt])
-            logging.info("[TursoDB] Purge executed.")
-            return 1
+            sql = "DELETE FROM posts WHERE published_at < ? OR (published_at IS NULL AND created_at < ?);"
+            res = self.execute(sql, [cutoff_iso, cutoff_space])
+            affected = res.get("results", [{}])[0].get("response", {}).get("result", {}).get("affected_row_count", 0)
+            logging.info(f"[TursoDB] Purge executed: {affected} expired articles removed.")
+            return affected
         except Exception as e:
             logging.error(f"[TursoDB] Error purging old posts: {e}")
             return 0
 
-    def insert_documents(self, documents: list, purge_older_than_days: int = 90) -> list:
+    def insert_documents(self, documents: list, purge_older_than_days: int = None) -> list:
         """Persists article documents into Turso 'posts' table."""
         if not self.http_url:
             return []
+
+        if purge_older_than_days is None:
+            try:
+                purge_older_than_days = int(os.getenv("RETENTION_DAYS", "7"))
+            except Exception:
+                purge_older_than_days = 7
 
         if purge_older_than_days and purge_older_than_days > 0:
             try:
