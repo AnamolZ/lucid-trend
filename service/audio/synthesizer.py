@@ -6,8 +6,8 @@ import asyncio
 import logging
 from service.tursodb.client import TursoDBService
 
-DEFAULT_VOICE = "en-US-ChristopherNeural"
-FALLBACK_VOICE = "en-US-EricNeural"
+DEFAULT_VOICE = "en-US-AvaNeural"
+FALLBACK_VOICE = "en-US-EmmaNeural"
 
 def clean_markdown_for_speech(title: str, markdown_content: str) -> str:
     """Transforms raw Markdown dispatch text into natural spoken narration prose."""
