@@ -15,6 +15,12 @@ def calculate_reading_time(content: str) -> str:
     return f"{minutes} min"
 
 
+AUTHORS_ROTATION = [
+    {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "/avatar-anamol.webp"},
+    {"name": "Bina Pokhrel", "role": "Researcher", "avatar": "/avatar-bina.webp"}
+]
+
+
 def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> str:
     """Extracts heavy base64 data URIs into static /images/{post_id}.jpg CDN files to keep JSON ultra-light."""
     if not image_data:
@@ -149,7 +155,7 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
     formatted_feed_posts = []
     search_index = []
 
-    for item in raw_posts:
+    for idx, item in enumerate(raw_posts):
         post_id = str(item.get("id"))
         title = item.get("title", "")
         desc = item.get("description", "")
@@ -157,9 +163,15 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         category = item.get("category", ["General"])
         raw_author = item.get("author")
         if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") != "NewsPluk Editorial":
-            author = raw_author
+            author = dict(raw_author)
+            if "Bina" in author.get("name", ""):
+                author["role"] = author.get("role") or "Researcher"
+                author["avatar"] = "/avatar-bina.webp"
+            elif "Anamol" in author.get("name", ""):
+                author["role"] = author.get("role") or "Backend System Developer"
+                author["avatar"] = "/avatar-anamol.webp"
         else:
-            author = {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "/avatar-anamol.webp"}
+            author = AUTHORS_ROTATION[idx % len(AUTHORS_ROTATION)]
         audio_url = item.get("audio_url") or f"/audio/{post_id}.m4a"
 
         # Transform heavy base64 images into flat edge assets

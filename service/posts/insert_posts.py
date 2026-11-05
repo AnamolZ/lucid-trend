@@ -68,11 +68,19 @@ TOPIC_FALLBACK_POOLS = {
     ]
 }
 
-AUTHOR = {
-    "name": "Anamol Dhakal",
-    "role": "Backend System Developer",
-    "avatar": "/avatar-anamol.webp"
-}
+AUTHORS = [
+    {
+        "name": "Anamol Dhakal",
+        "role": "Backend System Developer",
+        "avatar": "/avatar-anamol.webp"
+    },
+    {
+        "name": "Bina Pokhrel",
+        "role": "Researcher",
+        "avatar": "/avatar-bina.webp"
+    }
+]
+AUTHOR = AUTHORS[0]
 _image_synthesis_lock = threading.Lock()
 
 
@@ -160,8 +168,24 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
         logging.info("[InsertPosts] No articles to process.")
         return []
 
+    # Determine author rotation offset from the most recent database post (50-50 split)
+    author_offset = 0
+    existing_recent = []
+    try:
+        turso_service = TursoDBService()
+        existing_recent = turso_service.fetch_recent_posts_for_export(limit=50)
+        if existing_recent:
+            last_author = existing_recent[0].get("author")
+            last_name = last_author.get("name") if isinstance(last_author, dict) else str(last_author or "")
+            if "Anamol" in last_name:
+                author_offset = 1  # Next post is assigned to Bina Pokhrel
+            else:
+                author_offset = 0  # Next post is assigned to Anamol Dhakal
+    except Exception as e:
+        logging.warning(f"[InsertPosts] Could not determine last author from DB: {e}")
+
     prepared_documents = []
-    for item in data:
+    for idx, item in enumerate(data):
         now_iso = datetime.now(timezone.utc).isoformat()
         post_id = item.get("id")
         fallback_img = get_topic_fallback_image(
@@ -170,12 +194,13 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
             category=item.get("category"),
             post_id=post_id or ""
         )
+        assigned_author = item.get("author") or AUTHORS[(author_offset + idx) % len(AUTHORS)]
         doc = {
             **item,
             "image": item.get("image") or fallback_img,
             "thumbnail": item.get("thumbnail") or fallback_img,
             "audio_url": item.get("audio_url") or (f"/audio/{post_id}.m4a" if post_id else ""),
-            "author": item.get("author") or AUTHOR,
+            "author": assigned_author,
             "source": item.get("source") or "NewsPluk Editorial",
             "published_at": item.get("published_at") or item.get("date") or now_iso,
         }
@@ -184,8 +209,9 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
     # 1. Pre-Insertion Semantic Deduplication against existing database posts
     try:
         from service.data_cleaning.gemini import are_articles_semantic_duplicates
-        turso_service = TursoDBService()
-        existing_recent = turso_service.fetch_recent_posts_for_export(limit=50)
+        if not existing_recent:
+            turso_service = TursoDBService()
+            existing_recent = turso_service.fetch_recent_posts_for_export(limit=50)
 
         unique_docs = []
         for doc in prepared_documents:
