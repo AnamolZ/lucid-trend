@@ -16,8 +16,8 @@ def calculate_reading_time(content: str) -> str:
 
 
 AUTHORS_ROTATION = [
-    {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "/avatar-anamol.webp"},
-    {"name": "Bina Pokhrel", "role": "Researcher", "avatar": "/avatar-bina.webp"}
+    {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "https://newspluk.com/avatar-anamol.webp"},
+    {"name": "Bina Pokhrel", "role": "Researcher", "avatar": "https://newspluk.com/avatar-bina.webp"}
 ]
 
 
@@ -166,10 +166,10 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
             author = dict(raw_author)
             if "Bina" in author.get("name", ""):
                 author["role"] = author.get("role") or "Researcher"
-                author["avatar"] = "/avatar-bina.webp"
+                author["avatar"] = "https://newspluk.com/avatar-bina.webp"
             elif "Anamol" in author.get("name", ""):
                 author["role"] = author.get("role") or "Backend System Developer"
-                author["avatar"] = "/avatar-anamol.webp"
+                author["avatar"] = "https://newspluk.com/avatar-anamol.webp"
         else:
             author = AUTHORS_ROTATION[idx % len(AUTHORS_ROTATION)]
         audio_url = item.get("audio_url") or f"/audio/{post_id}.m4a"

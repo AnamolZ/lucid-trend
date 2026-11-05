@@ -72,12 +72,12 @@ AUTHORS = [
     {
         "name": "Anamol Dhakal",
         "role": "Backend System Developer",
-        "avatar": "/avatar-anamol.webp"
+        "avatar": "https://newspluk.com/avatar-anamol.webp"
     },
     {
         "name": "Bina Pokhrel",
         "role": "Researcher",
-        "avatar": "/avatar-bina.webp"
+        "avatar": "https://newspluk.com/avatar-bina.webp"
     }
 ]
 AUTHOR = AUTHORS[0]
