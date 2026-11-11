@@ -171,8 +171,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
         title = item.get("title", "")
         desc = item.get("description", "")
         content = item.get("content", "")
-        # Strict rule: ONLY the very latest 8 posts carry "Breaking News"; strip it from older posts
-        category = TursoDBService.normalize_breaking_news_categories(item.get("category", ["General"]), is_breaking=(idx < 8))
+        # Strict rule: ONLY latest 8 posts within the past 24h carry "Breaking News"
+        is_breaking = TursoDBService.is_breaking_news_candidate(
+            idx, item.get("published_at") or item.get("created_at"), keep_count=8, max_age_hours=24
+        )
+        category = TursoDBService.normalize_breaking_news_categories(item.get("category", ["General"]), is_breaking=is_breaking)
         raw_author = item.get("author")
         if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") != "NewsPluk Editorial":
             author = dict(raw_author)

@@ -291,14 +291,41 @@ class TursoDBService:
             return ["Breaking News"] + domains
         return domains if domains else ["Tech Strategy"]
 
-    def sync_breaking_news_tag(self, keep_count: int = 8) -> dict:
-        """Keeps 'Breaking News' strictly on the latest `keep_count` posts and removes it from all older posts."""
+    @staticmethod
+    def is_breaking_news_candidate(
+        idx: int,
+        raw_pub,
+        keep_count: int = 8,
+        max_age_hours: int = 24,
+        now_utc=None,
+    ) -> bool:
+        """Returns True only when a post is within the latest `keep_count` and published within `max_age_hours`."""
+        if idx >= keep_count:
+            return False
+        if not max_age_hours or not raw_pub:
+            return True
+        from datetime import datetime, timezone, timedelta
+        ref_now = now_utc or datetime.now(timezone.utc)
+        cutoff = ref_now - timedelta(hours=max_age_hours)
+        try:
+            pub_dt = datetime.fromisoformat(str(raw_pub).replace("Z", "+00:00"))
+            if pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+            return pub_dt >= cutoff
+        except Exception:
+            return True
+
+    def sync_breaking_news_tag(self, keep_count: int = 8, max_age_hours: int = 24) -> dict:
+        """Keeps 'Breaking News' strictly on the latest `keep_count` posts published within `max_age_hours`."""
         if not self.http_url:
             return {"updated": 0, "added": 0, "removed": 0}
 
-        sql = "SELECT id, category FROM posts ORDER BY published_at DESC, id DESC LIMIT 750;"
+        sql = "SELECT id, category, published_at FROM posts ORDER BY published_at DESC, id DESC LIMIT 750;"
         res = self.execute(sql)
         rows = res.get("results", [{}])[0].get("response", {}).get("result", {}).get("rows", [])
+
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
 
         statements = []
         added = 0
@@ -307,12 +334,16 @@ class TursoDBService:
         for idx, row in enumerate(rows):
             post_id_obj = row[0] if len(row) > 0 else None
             cat_obj = row[1] if len(row) > 1 else None
+            pub_obj = row[2] if len(row) > 2 else None
             post_id = post_id_obj.get("value") if isinstance(post_id_obj, dict) else post_id_obj
             raw_cat = cat_obj.get("value") if isinstance(cat_obj, dict) else cat_obj
+            raw_pub = pub_obj.get("value") if isinstance(pub_obj, dict) else pub_obj
             if not post_id:
                 continue
 
-            should_break = idx < keep_count
+            should_break = self.is_breaking_news_candidate(
+                idx, raw_pub, keep_count=keep_count, max_age_hours=max_age_hours, now_utc=now_utc
+            )
             current_cats = self.normalize_breaking_news_categories(raw_cat, False)
             had_breaking = False
             if raw_cat and "breaking news" in str(raw_cat).lower():
