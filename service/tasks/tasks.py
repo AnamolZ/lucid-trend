@@ -84,15 +84,21 @@ def generate_and_update_image_task(self, post_id: str, image_prompt: str = None,
 def generate_image_task(item: dict) -> dict:
     """Synchronous fallback task for single-article image generation."""
     generation_prompt = item.get("image_prompt")
-    if not generation_prompt and item.get("title"):
-        generation_prompt = (
-            f"Cinematic digital illustration of {item.get('title')}, futuristic, clean 16:9 composition"
-        )
+    title = item.get("title")
+    description = item.get("description")
+    category = item.get("category")
 
     image_url = None
-    if generation_prompt:
+    if generation_prompt or title:
         try:
-            image_url = huggingface_image(prompt=generation_prompt, max_rounds=1, wait_seconds=0)
+            image_url = huggingface_image(
+                prompt=generation_prompt,
+                title=title,
+                description=description,
+                category=category,
+                max_rounds=1,
+                wait_seconds=0,
+            )
         except Exception as e:
             logging.warning(f"[Tasks] Image generation error: {e}")
 

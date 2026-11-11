@@ -22,62 +22,92 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+_AI_SLOP_CLICHES = (
+    "glowing semantic code graph",
+    "abstract api nodes",
+    "floating abstract",
+    "expansive digital space",
+    "dots and lines",
+    "in mid-air above",
+    "abstract formal proof code",
+    "holographic",
+    "digital illustration",
+    "concept art",
+    "octane render",
+    "unreal engine",
+    "cyberpunk",
+    "sci-fi fantasy",
+    "futuristic hologram",
+)
+
+_SLOP_TOKEN_RE = re.compile(
+    r"\b(8k|4k|octane\s*render|unreal\s*engine|hyper-?detailed|hyper-?realistic|photorealistic|"
+    r"cinematic\s+lighting|cinematic\s+digital\s+illustration|digital\s+illustration|"
+    r"concept\s+art|3d\s+render|holographic|hologram|futuristic|sci-?fi|cyberpunk|"
+    r"neon\s+glow|glowing\s+neon|obsidian|masterpiece|trending\s+on\s+artstation)\b",
+    re.IGNORECASE,
+)
+
+
+def _scrub_slop_phrases(text: str) -> str:
+    """Removes CGI, 3D-render, and buzzword triggers that cause synthetic AI visuals."""
+    cleaned = _SLOP_TOKEN_RE.sub("", text or "")
+    cleaned = re.sub(r"\s*,\s*,+", ", ", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,.-")
+    return cleaned
+
+
 def build_grounded_flux_prompt(
     prompt: str = None,
     title: str = None,
     description: str = None,
     category: list = None
 ) -> str:
-    """Enriches and grounds image prompts to ensure concrete, photorealistic scenes directly matching the article."""
+    """Grounds image prompts in real-world documentary photojournalism instead of synthetic CGI."""
     text_corpus = f"{title or ''} {description or ''} {prompt or ''}".lower()
 
-    # Detect abstract/cliche tropes that yield generic floating dots
-    is_abstract_cliche = any(
-        cliche in (prompt or "").lower() for cliche in [
-            "glowing semantic code graph", "abstract api nodes",
-            "floating abstract", "expansive digital space",
-            "dots and lines", "in mid-air above", "abstract formal proof code"
-        ]
-    )
+    raw_prompt = (prompt or "").strip()
+    is_abstract_cliche = any(cliche in raw_prompt.lower() for cliche in _AI_SLOP_CLICHES)
 
-    # Concrete visual scene anchors based on technical & financial domains
+    # Concrete, real-world editorial press photography anchors per beat (no CGI/hologram tropes)
     if any(k in text_corpus for k in ["bitcoin", "crypto", "ethereum", "blockchain", "solana", "stablecoin", "usdc", "usdt", "defi", "web3"]):
-        anchor = f"Futuristic high-tech cryptocurrency institutional treasury operations center with holographic cryptographic lattice visualizers, high-frequency liquidity telemetry terminals, dark polished reflective obsidian interior. Topic: {title or 'Crypto Infrastructure'}"
-    elif any(k in text_corpus for k in ["swift", "banking", "treasury", "settlement", "liquidity", "forex", "etf", "capital", "inflation", "bond", "yield", "fed", "macroeconomic"]):
-        anchor = f"Panoramic multinational enterprise corporate treasury trading floor overlooking city skyline at dusk, multi-display financial terminals showing real-time global capital flow heatmaps and order books, clean corporate cinematic lighting. Topic: {title or 'Financial Architecture'}"
-    elif any(k in text_corpus for k in ["geopolitics", "diplomacy", "treaty", "sanctions", "sovereignty", "nato", "summit"]):
-        anchor = f"Distinguished international summit press assembly hall with state flags, architectural walnut dais, press broadcast lighting, high-level geopolitical delegation setting. Topic: {title or 'Global Geopolitics'}"
+        anchor = f"Editorial documentary photograph inside a modern institutional digital-asset research office in Zurich or New York, analysts at standard dual-monitor workstations reviewing market order books and hardware security modules under natural daylight through blinds. Subject: {title or 'Crypto Market Structure'}"
+    elif any(k in text_corpus for k in ["swift", "banking", "treasury", "settlement", "liquidity", "forex", "etf", "capital", "inflation", "bond", "yield", "fed", "macroeconomic", "tariff", "central bank"]):
+        anchor = f"Reuters-style documentary photograph of an active institutional trading desk or central bank press corridor, brokers in business attire checking multi-screen financial charts in natural daytime lighting, subtle ambient glass reflections. Subject: {title or 'Global Markets'}"
+    elif any(k in text_corpus for k in ["geopolitics", "diplomacy", "treaty", "sanctions", "sovereignty", "nato", "summit", "defense", "maritime", "military", "border"]):
+        anchor = f"Associated Press documentary photograph of an international diplomatic summit hall or strategic coastal corridor in overcast morning light, national flags, press briefing microphones on a wooden podium, shallow depth of field. Subject: {title or 'Geopolitical Affairs'}"
     elif any(k in text_corpus for k in ["quantum", "qubit", "cryostat", "superconductor"]):
-        anchor = f"Gleaming dilution refrigerator cryostat with gold-plated thermal plates and braided copper wiring inside an advanced quantum computing cleanroom laboratory, laser diagnostics. Topic: {title or 'Quantum Breakthrough'}"
+        anchor = f"Documentary photograph inside an academic physics laboratory, researchers in casual lab coats inspecting a cylindrical brass and stainless-steel dilution refrigerator cryostat suspended from a rigid aluminum frame under white overhead fluorescent lights. Subject: {title or 'Quantum Hardware'}"
     elif any(k in text_corpus for k in ["math", "formal proof", "theorem", "reasoning", "symbolic", "verification"]):
-        anchor = f"High-tech mathematical supercomputing laboratory with illuminated panoramic blackboards displaying formal mathematical logic equations and topological diagrams, operator workstations with high-res monitors. Topic: {title or 'Mathematical Reasoning'}"
-    elif any(k in text_corpus for k in ["chip", "semiconductor", "gpu", "tpu", "hardware", "nvidia", "silicon", "transistor", "dram"]):
-        anchor = f"Macro photography of a high-performance silicon AI accelerator processor die, glowing etched nano-circuits, gold interconnect pins, liquid cooling pipes. Topic: {title or 'Hardware Architecture'}"
-    elif bool(re.search(r'\b(code|developer|ide|compiler|rust|python|software|api|framework|library)\b', text_corpus)):
-        anchor = f"A senior software engineer at an ergonomic multi-monitor workstation in a modern architectural tech office at twilight, screens glowing with crisp IDE code syntax and terminal telemetry. Topic: {title or 'Developer Ecosystem'}"
-    elif any(k in text_corpus for k in ["security", "vulnerability", "hack", "cyber", "malware", "firewall", "encryption"]):
-        anchor = f"Panoramic high-tech cybersecurity operations center (SOC) with curved video walls projecting global network traffic telemetry, glowing server racks, analysts at command consoles. Topic: {title or 'Cybersecurity'}"
-    elif any(k in text_corpus for k in ["robot", "humanoid", "autonomous", "drone", "actuator"]):
-        anchor = f"Advanced collaborative robotic system with carbon fiber actuators being calibrated in an engineering research facility, ambient cinematic studio lighting. Topic: {title or 'Autonomous Robotics'}"
-    elif any(k in text_corpus for k in ["datacenter", "cloud", "server", "cluster", "kubernetes", "infra"]):
-        anchor = f"Cavernous enterprise cloud datacenter with towering server racks, pulsing blue and amber status LEDs, neatly organized fiber optic cabling, reflective polished dark floor. Topic: {title or 'Cloud Infrastructure'}"
+        anchor = f"Candid documentary photograph in a university research seminar room, mathematicians standing near a chalk-smudged green blackboard covered in handwritten proofs, natural window light across wooden desks and open laptops. Subject: {title or 'Mathematical Research'}"
+    elif any(k in text_corpus for k in ["chip", "semiconductor", "gpu", "tpu", "hardware", "nvidia", "silicon", "transistor", "dram", "wafer", "tsmc", "asml"]):
+        anchor = f"Industrial photojournalism shot inside a real semiconductor cleanroom facility, engineers in white Tyvek bunny suits and safety goggles examining an iridescent bare silicon wafer beside stainless steel lithography machinery under even white cleanroom lighting. Subject: {title or 'Semiconductor Manufacturing'}"
+    elif bool(re.search(r'\b(code|developer|ide|compiler|rust|python|software|api|framework|library|linux|kernel)\b', text_corpus)):
+        anchor = f"Natural candid documentary photograph of a software engineer working on a matte laptop and external vertical monitor in a quiet daytime engineering office with potted plants and natural window light, unposed desk clutter, realistic keyboard and coffee mug. Subject: {title or 'Software Engineering'}"
+    elif any(k in text_corpus for k in ["security", "vulnerability", "hack", "cyber", "malware", "firewall", "encryption", "zero-day"]):
+        anchor = f"Real-world editorial photograph of an enterprise incident-response conference room, network security engineers reviewing log timelines on ordinary wall displays and laptops in neutral fluorescent office light. Subject: {title or 'Cybersecurity'}"
+    elif any(k in text_corpus for k in ["robot", "humanoid", "autonomous", "drone", "actuator", "satellite", "aerospace", "rocket"]):
+        anchor = f"Candid press photograph inside an industrial robotics and aerospace assembly bay, mechanical engineers with safety glasses and hand tools testing metal actuators and wiring harnesses on a brushed steel workbench under warehouse skylighting. Subject: {title or 'Robotics and Aerospace'}"
+    elif any(k in text_corpus for k in ["datacenter", "cloud", "server", "cluster", "kubernetes", "infra", "ai model", "llm", "inference"]):
+        anchor = f"Documentary photograph looking down a long industrial server aisle inside a working hyperscale data center, perforated grey steel cabinet doors, neat yellow fiber patch cables overhead, cool utilitarian aisle lighting, technician inspecting a rack in the background. Subject: {title or 'Compute Infrastructure'}"
     else:
-        anchor = f"High-impact cinematic technological scene capturing {title or 'next-generation technology breakthrough'}, modern high-tech research facility, architectural lighting"
+        anchor = f"Candid editorial documentary photograph illustrating {title or 'current industry developments'}, authentic real-world workplace or industrial setting, natural ambient daylight, unposed photojournalistic framing"
 
-    if prompt and not is_abstract_cliche and len(prompt.strip()) > 30:
-        base = prompt.strip()
+    cleaned_prompt = _scrub_slop_phrases(raw_prompt)
+    if cleaned_prompt and not is_abstract_cliche and len(cleaned_prompt) > 30:
+        base = cleaned_prompt
     else:
         base = anchor
 
     base = base.replace('"', '').replace("'", "").strip()
     if title and title.strip().lower() not in base.lower():
-        base = f"{base}. Focus: {title.strip()}"
+        base = f"{base}. Subject: {title.strip()}"
 
-    style_suffix = "cinematic lighting, photorealistic, 8k octane render, clean 16:9 composition, hyper-detailed"
-    if "16:9" not in base.lower():
-        base = f"{base}, {style_suffix}"
-
-    return base
+    style_suffix = (
+        "authentic Reuters press photograph, documentary photojournalism, shot on 35mm full-frame camera, "
+        "35mm lens f/2.8, natural unretouched lighting, real-world textures, subtle film grain, 16:9 horizontal composition"
+    )
+    return f"{base}, {style_suffix}"
 
 
 class CloudflareAccountCoordinator:

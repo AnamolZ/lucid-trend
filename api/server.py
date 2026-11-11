@@ -149,17 +149,15 @@ async def get_system_status():
 
 @app.post("/api/v1/image/generate", dependencies=[Depends(verify_api_key)])
 async def generate_image_endpoint(req: ImageGenerationRequest):
-    """Generates an image via FLUX.1 without blocking the asyncio loop, returning download URL and base64."""
-    prompt = req.prompt
-    if not prompt and req.title:
-        prompt = f"Cinematic digital illustration of {req.title}, futuristic, clean 16:9 composition"
+    """Generates an editorial photojournalism image via FLUX.1 without blocking the asyncio loop."""
+    prompt = (req.prompt or "").strip() or None
 
-    if not prompt:
+    if not prompt and not req.title:
         raise HTTPException(status_code=400, detail="Either 'prompt' or 'title' must be provided.")
 
     logging.info("=" * 65)
-    logging.info(f"[API ImageGeneration] Generating image for prompt:")
-    logging.info(f"  -> \"{prompt}\"")
+    logging.info(f"[API ImageGeneration] Generating image for title/prompt:")
+    logging.info(f"  -> \"{prompt or req.title}\"")
     logging.info("=" * 65)
 
     data_uri = await asyncio.to_thread(
