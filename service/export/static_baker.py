@@ -22,7 +22,7 @@ AUTHORS_ROTATION = [
 
 
 def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> str:
-    """Extracts heavy base64 data URIs into static /images/{post_id}.jpg CDN files to keep JSON ultra-light."""
+    """Extracts heavy base64 data URIs into static /images/{post_id}.jpg and .webp CDN files to keep payloads ultra-light."""
     if not image_data:
         return ""
     if not str(image_data).startswith("data:image/"):
@@ -37,7 +37,11 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
             ext = "webp"
 
         filename = f"{post_id}.{ext}"
+        webp_filename = f"{post_id}.webp"
         img_bytes = base64.b64decode(encoded)
+
+        from PIL import Image
+        import io
 
         for dest in target_dirs:
             # Resolve public/images directory alongside public/api
@@ -48,25 +52,30 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
 
             os.makedirs(img_dir, exist_ok=True)
             img_path = os.path.join(img_dir, filename)
+            webp_path = os.path.join(img_dir, webp_filename)
 
-            # For mobile application, compress to mobile-optimized 78% quality (max-width 1080) for lean hybrid bundling (<7MB)
-            if "news-pluk-application" in dest:
-                try:
-                    from PIL import Image
-                    import io
-                    with Image.open(io.BytesIO(img_bytes)) as im:
-                        if im.mode in ('RGBA', 'P'):
-                            im = im.convert('RGB')
-                        if im.width > 1080:
-                            new_height = int(im.height * (1080 / im.width))
-                            im = im.resize((1080, new_height), Image.Resampling.LANCZOS)
-                        im.save(img_path, 'JPEG', quality=78, optimize=True)
-                        continue
-                except Exception:
-                    pass
+            try:
+                with Image.open(io.BytesIO(img_bytes)) as im:
+                    if im.mode in ('RGBA', 'P'):
+                        im = im.convert('RGB')
 
-            with open(img_path, "wb") as f:
-                f.write(img_bytes)
+                    # 1. Generate Mobile WebP stream (max-width 720, quality 75, method 6) -> 25 KB - 40 KB
+                    im_mobile = im
+                    if im.width > 720:
+                        m_height = int(im.height * (720 / im.width))
+                        im_mobile = im.resize((720, m_height), Image.Resampling.LANCZOS)
+                    im_mobile.save(webp_path, 'WEBP', quality=75, method=6)
+
+                    # 2. Generate Desktop Master JPEG (max-width 1200, quality 78, optimize=True) -> 80 KB - 110 KB
+                    im_desktop = im
+                    if im.width > 1200:
+                        d_height = int(im.height * (1200 / im.width))
+                        im_desktop = im.resize((1200, d_height), Image.Resampling.LANCZOS)
+                    im_desktop.save(img_path, 'JPEG', quality=78, optimize=True)
+            except Exception as enc_err:
+                logging.warning(f"[StaticBaker] PIL encoding error for {post_id}: {enc_err}, writing raw bytes.")
+                with open(img_path, "wb") as f:
+                    f.write(img_bytes)
 
         return f"/images/{filename}"
     except Exception as e:
@@ -128,8 +137,8 @@ def prune_orphaned_assets(active_ids: set, target_dirs: list) -> int:
     return removed_total
 
 
-def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
-    """Bakes Turso database dispatches into edge-static JSON payloads (feed.json, posts/<id>.json, search-index.json)."""
+def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit: int = 56) -> dict:
+    """Bakes Turso database dispatches into edge-static JSON payloads (56-item feed.json, posts/<id>.json up to 90d, search-index.json)."""
     turso = TursoDBService()
     raw_posts = turso.fetch_recent_posts_for_export(limit=limit)
 
@@ -142,8 +151,10 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         target_dirs = [
             os.path.join(base_dir, "public", "api"),
             os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api"),
-            os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api"),
         ]
+        legacy_app_api = os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api")
+        if os.path.exists(legacy_app_api):
+            target_dirs.append(legacy_app_api)
         dist_api = os.path.join(os.path.dirname(base_dir), "news-pluk", "dist", "api")
         if os.path.exists(os.path.join(os.path.dirname(base_dir), "news-pluk", "dist")):
             target_dirs.append(dist_api)
@@ -160,7 +171,8 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
         title = item.get("title", "")
         desc = item.get("description", "")
         content = item.get("content", "")
-        category = item.get("category", ["General"])
+        # Strict rule: ONLY the very latest 8 posts carry "Breaking News"; strip it from older posts
+        category = TursoDBService.normalize_breaking_news_categories(item.get("category", ["General"]), is_breaking=(idx < 8))
         raw_author = item.get("author")
         if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") != "NewsPluk Editorial":
             author = dict(raw_author)
@@ -236,10 +248,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 50) -> dict:
             except Exception as e:
                 logging.warning(f"[StaticBaker] Error writing single post JSON to {dest}: {e}")
 
+    app_feed_posts = formatted_feed_posts[:feed_limit]
     feed_payload = {
         "status": "success",
-        "totalPosts": len(formatted_feed_posts),
-        "posts": formatted_feed_posts,
+        "totalPosts": len(app_feed_posts),
+        "posts": app_feed_posts,
     }
     feed_json_str = json.dumps(feed_payload, indent=2, ensure_ascii=False)
     search_json_str = json.dumps(search_index, indent=2, ensure_ascii=False)

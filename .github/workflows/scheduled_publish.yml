@@ -12,7 +12,8 @@ on:
     # 15:00 UTC (20:45 NPT / 11:00 EDT) -> Finance & Global Markets
     # 18:00 UTC (23:45 NPT / 14:00 EDT) -> Technology, AI & Scientific Research
     # 21:00 UTC (02:45 NPT / 17:00 EDT) -> Finance & Global Markets
-    - cron: '0 */3 * * *'
+    # 17 */3 * * * avoids global :00 GitHub runner queue spikes while covering all 8 daily 3-hour slots
+    - cron: '17 */3 * * *'
   workflow_dispatch:
     inputs:
       category:
@@ -76,7 +77,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'lt_sec_f30fc7a1ea1603eba5a4c6458f6ec307' }}
-          RETENTION_DAYS: ${{ vars.RETENTION_DAYS || '7' }}
+          RETENTION_DAYS: ${{ vars.RETENTION_DAYS || '90' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
@@ -100,7 +101,7 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
-          uv run python -c "from service.export.static_baker import bake_static_payloads; res = bake_static_payloads(); print('Baked payloads:', res)"
+          uv run python -c "from service.export.static_baker import bake_static_payloads; res = bake_static_payloads(limit=750, feed_limit=56); print('Baked payloads:', res)"
 
       - name: Deploy Flat CDN Assets to news-pluk
         id: deploy_cdn

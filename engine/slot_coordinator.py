@@ -24,7 +24,9 @@ CATEGORY_PILLARS = {
         "allowed_domains": ["AI & ML", "Cloud & Infrastructure", "Developer Central", "Programming & Frameworks"],
         "search_queries": [
             "AI OR machine learning OR LLM OR semiconductor breakthrough when:1d",
-            "cybersecurity vulnerability OR quantum computing OR developer release when:1d"
+            "cybersecurity vulnerability OR quantum computing OR developer release when:1d",
+            "cloud infrastructure OR robotics OR microchip OR open source model when:2d",
+            "autonomous systems OR biotech computing OR data center energy when:2d"
         ],
         "keywords": ["ai", "tech", "software", "chip", "quantum", "compiler", "cloud", "model"]
     },
@@ -34,7 +36,9 @@ CATEGORY_PILLARS = {
         "allowed_domains": ["Finance & Markets", "Crypto & Web3", "Macroeconomics", "Tech Strategy"],
         "search_queries": [
             "cryptocurrency OR Bitcoin OR Ethereum OR ETF market when:1d",
-            "stocks OR Federal Reserve OR inflation OR oil bond market when:1d"
+            "stocks OR Federal Reserve OR inflation OR oil bond market when:1d",
+            "central bank interest rate OR sovereign debt OR banking regulation when:2d",
+            "commodities OR currency market OR earnings report OR venture capital when:2d"
         ],
         "keywords": ["finance", "market", "crypto", "stock", "fed", "rate", "inflation", "oil", "bond", "treasury"]
     },
@@ -44,7 +48,9 @@ CATEGORY_PILLARS = {
         "allowed_domains": ["Geopolitics & Defense", "International Relations", "Global Security", "Tech Strategy"],
         "search_queries": [
             "geopolitics OR international sanctions OR military defense technology when:1d",
-            "trade war OR NATO OR treaty foreign policy when:1d"
+            "trade war OR NATO OR treaty foreign policy when:1d",
+            "maritime security OR Indo-Pacific OR European defense OR diplomacy when:2d",
+            "export controls OR energy corridor OR sovereign alliance when:2d"
         ],
         "keywords": ["geopolitics", "defense", "war", "military", "sanction", "nato", "treaty", "security"]
     }
@@ -109,7 +115,7 @@ def resolve_active_slot(manual_category: str = None) -> Dict[str, Any]:
         "label": closest_slot["label"]
     }
 
-def fetch_category_exclusions(category_key: str, limit: int = 15) -> List[str]:
+def fetch_category_exclusions(category_key: str, limit: int = 25) -> List[str]:
     """Fetches recently published titles from Turso DB strictly matching the target category."""
     try:
         from service.tursodb.client import TursoDBService

@@ -91,7 +91,7 @@ async def run_pipeline(target_category: str = None) -> bool:
 
     try:
         # 1. Fetch past 15 titles strictly from this category for upstream exclusion
-        exclusions = fetch_category_exclusions(cat_key, limit=15)
+        exclusions = fetch_category_exclusions(cat_key, limit=25)
 
         root = RootAgentEngine()
         research_prompt = (
@@ -118,7 +118,8 @@ async def run_pipeline(target_category: str = None) -> bool:
 
         inserted_docs = await safe_execute("InsertPosts", insert_posts, articles)
         if not inserted_docs:
-            logging.warning("[Pipeline] No articles inserted into database.")
+            logging.warning("[Pipeline] No articles inserted into database. Signalling retry.")
+            return False
 
         await safe_execute("NotifySubscribers", notify_subscribers, articles)
 
@@ -149,15 +150,22 @@ async def run_pipeline(target_category: str = None) -> bool:
         return False
 
 async def run_daily_cycle(target_category: str = None):
-    """Runs pipeline cycles with automated retry backoff on upstream network failures."""
-    while True:
+    """Runs pipeline cycles with bounded retry backoff compatible with CI timeouts."""
+    max_attempts = 4
+    retry_delay_seconds = 25
+    for attempt in range(1, max_attempts + 1):
         success = await run_pipeline(target_category=target_category)
         if success:
-            logging.info("[Scheduler] Pipeline run concluded successfully.")
-            break
-        else:
-            logging.warning("[Scheduler] Pipeline cycle did not produce output. Retrying in 5 minutes...")
-            await asyncio.sleep(300)
+            logging.info(f"[Scheduler] Pipeline run concluded successfully on attempt {attempt}.")
+            return True
+        if attempt < max_attempts:
+            logging.warning(
+                f"[Scheduler] Pipeline attempt {attempt}/{max_attempts} did not produce output. "
+                f"Retrying in {retry_delay_seconds}s..."
+            )
+            await asyncio.sleep(retry_delay_seconds)
+    logging.error(f"[Scheduler] Exhausted all {max_attempts} attempts without publishing.")
+    return False
 
 def start_api_server():
     """Launches the authenticated FastAPI management server using uvicorn."""

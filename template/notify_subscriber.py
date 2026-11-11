@@ -4,6 +4,32 @@ import re
 from datetime import datetime
 
 
+def _extract_closing_takeaway(content: str, description: str) -> str:
+    """Extracts the closing paragraph from dynamic monograph headings or legacy takeaway headings."""
+    takeaway = description
+    if content:
+        if "## Final Takeaway" in content:
+            parts = content.split("## Final Takeaway", 1)
+            extracted = parts[1].strip().split("\n\n")[0].strip()
+            if extracted:
+                takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
+        elif "## Developer Experience" in content:
+            parts = content.split("## Developer Experience", 1)
+            extracted = parts[1].strip().split("\n\n")[0].strip()
+            if extracted:
+                takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
+        else:
+            # Dynamically pick the first clean paragraph under the final ## chapter subheading
+            sections = re.split(r"(?m)^##\s+.+$", content)
+            if len(sections) > 1:
+                for block in sections[-1].strip().split("\n\n"):
+                    candidate = block.strip()
+                    if candidate and not candidate.startswith((">", "|", "```", "#", "---")):
+                        takeaway = re.sub(r"^[#\s*\-]+", "", candidate)
+                        break
+    return takeaway
+
+
 def _format_summary_bullet(item: dict) -> str:
     """Creates a concise 1-line bullet for the top Executive Summary card."""
     title = item.get("title", "Update").strip()
@@ -14,17 +40,7 @@ def _format_summary_bullet(item: dict) -> str:
     content = item.get("content", "")
     description = item.get("description", "").strip()
 
-    takeaway = description
-    if "## Final Takeaway" in content:
-        parts = content.split("## Final Takeaway", 1)
-        extracted = parts[1].strip().split("\n\n")[0].strip()
-        if extracted:
-            takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
-    elif "## Developer Experience" in content:
-        parts = content.split("## Developer Experience", 1)
-        extracted = parts[1].strip().split("\n\n")[0].strip()
-        if extracted:
-            takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
+    takeaway = _extract_closing_takeaway(content, description)
 
     # Clean takeaway and pick first sentence
     takeaway = re.sub(r"[*`\[\]]", "", takeaway).strip()
@@ -53,17 +69,7 @@ def _format_article_html(item: dict, is_last: bool = False) -> str:
     link = f"https://newspluk.com/#article-{post_id}" if post_id else "https://newspluk.com"
 
     # Extract dynamic takeaway if available from article content
-    takeaway = description
-    if "## Final Takeaway" in content:
-        parts = content.split("## Final Takeaway", 1)
-        extracted = parts[1].strip().split("\n\n")[0].strip()
-        if extracted:
-            takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
-    elif "## Developer Experience" in content:
-        parts = content.split("## Developer Experience", 1)
-        extracted = parts[1].strip().split("\n\n")[0].strip()
-        if extracted:
-            takeaway = re.sub(r"^[#\s*\-]+", "", extracted)
+    takeaway = _extract_closing_takeaway(content, description)
 
     clean_summary = description
     clean_summary = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", clean_summary)

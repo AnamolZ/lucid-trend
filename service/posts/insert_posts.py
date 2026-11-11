@@ -173,7 +173,7 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
     existing_recent = []
     try:
         turso_service = TursoDBService()
-        existing_recent = turso_service.fetch_recent_posts_for_export(limit=50)
+        existing_recent = turso_service.fetch_recent_posts_for_export(limit=80)
         if existing_recent:
             last_author = existing_recent[0].get("author")
             last_name = last_author.get("name") if isinstance(last_author, dict) else str(last_author or "")
@@ -242,9 +242,11 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
 
     # 2. Write to Turso libSQL (Single Source of Truth)
     try:
-        retention = int(os.getenv("RETENTION_DAYS", "7"))
+        retention = int(os.getenv("RETENTION_DAYS", "90"))
         inserted_ids = turso_service.insert_documents(prepared_documents, purge_older_than_days=retention)
-        logging.info(f"[InsertPosts] Published {len(inserted_ids)} articles to Turso Master DB.")
+        logging.info(f"[InsertPosts] Published {len(inserted_ids)} articles to Turso Master DB (retention={retention}d).")
+        # Ensure ONLY the very latest 8 posts retain the 'Breaking News' tag
+        turso_service.sync_breaking_news_tag(keep_count=8)
     except Exception as turso_err:
         logging.error(f"[InsertPosts] Turso insertion failed: {turso_err}")
 

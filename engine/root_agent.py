@@ -31,7 +31,7 @@ class RootAgentPipeline:
         queries = pillar_info["search_queries"]
 
         logger.info(f"[RootPipeline] Step 1/2: Scouting verified 24h developments for '{pillar_title}'...")
-        raw_intel = await asyncio.to_thread(scout_category_intel, category_key, queries, max_items=12)
+        raw_intel = await asyncio.to_thread(scout_category_intel, category_key, queries, max_items=18)
         dossier = format_category_dossier(raw_intel, exclusions or [])
         logger.info(f"[RootPipeline] Step 1/2 Complete: {len(raw_intel)} verified developments scouted.")
 

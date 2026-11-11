@@ -61,7 +61,7 @@ class TursoDBService:
     def execute(self, sql: str, args: list = None) -> dict:
         return self.execute_batch([{"sql": sql, "args": args or []}])
 
-    def delete_older_than_days(self, days: int = 7) -> int:
+    def delete_older_than_days(self, days: int = 90) -> int:
         """Purges articles older than `days` based on published_at or created_at."""
         if not self.http_url:
             return 0
@@ -85,9 +85,9 @@ class TursoDBService:
 
         if purge_older_than_days is None:
             try:
-                purge_older_than_days = int(os.getenv("RETENTION_DAYS", "7"))
+                purge_older_than_days = int(os.getenv("RETENTION_DAYS", "90"))
             except Exception:
-                purge_older_than_days = 7
+                purge_older_than_days = 90
 
         if purge_older_than_days and purge_older_than_days > 0:
             try:
@@ -194,7 +194,7 @@ class TursoDBService:
         logging.info(f"[TursoDB] Fetched {len(posts)} existing posts.")
         return posts
 
-    def fetch_recent_posts_for_export(self, limit: int = 50) -> list:
+    def fetch_recent_posts_for_export(self, limit: int = 750) -> list:
         """Retrieves full article objects sorted by published_at DESC for static JSON baking."""
         if not self.http_url:
             return []
@@ -271,4 +271,76 @@ class TursoDBService:
         res = self.execute_batch(statements)
         logging.info(f"[TursoDB] Purged {len(statements)} duplicate posts from Turso.")
         return len(statements)
+
+    @staticmethod
+    def normalize_breaking_news_categories(raw_cat, is_breaking: bool) -> list:
+        """Ensures 'Breaking News' tag exists only when is_breaking=True, while preserving domain tags."""
+        if isinstance(raw_cat, str):
+            try:
+                parsed = json.loads(raw_cat)
+                cats = parsed if isinstance(parsed, list) else [raw_cat]
+            except Exception:
+                cats = [c.strip() for c in raw_cat.split(",") if c.strip()]
+        elif isinstance(raw_cat, list):
+            cats = [str(c).strip() for c in raw_cat if c and str(c).strip()]
+        else:
+            cats = []
+
+        domains = [c for c in cats if c.lower() != "breaking news"]
+        if is_breaking:
+            return ["Breaking News"] + domains
+        return domains if domains else ["Tech Strategy"]
+
+    def sync_breaking_news_tag(self, keep_count: int = 8) -> dict:
+        """Keeps 'Breaking News' strictly on the latest `keep_count` posts and removes it from all older posts."""
+        if not self.http_url:
+            return {"updated": 0, "added": 0, "removed": 0}
+
+        sql = "SELECT id, category FROM posts ORDER BY published_at DESC, id DESC LIMIT 750;"
+        res = self.execute(sql)
+        rows = res.get("results", [{}])[0].get("response", {}).get("result", {}).get("rows", [])
+
+        statements = []
+        added = 0
+        removed = 0
+
+        for idx, row in enumerate(rows):
+            post_id_obj = row[0] if len(row) > 0 else None
+            cat_obj = row[1] if len(row) > 1 else None
+            post_id = post_id_obj.get("value") if isinstance(post_id_obj, dict) else post_id_obj
+            raw_cat = cat_obj.get("value") if isinstance(cat_obj, dict) else cat_obj
+            if not post_id:
+                continue
+
+            should_break = idx < keep_count
+            current_cats = self.normalize_breaking_news_categories(raw_cat, False)
+            had_breaking = False
+            if raw_cat and "breaking news" in str(raw_cat).lower():
+                had_breaking = True
+
+            target_cats = self.normalize_breaking_news_categories(raw_cat, should_break)
+            target_json = json.dumps(target_cats)
+
+            # Parse original raw JSON cleanly to avoid needless writes
+            try:
+                orig_parsed = json.loads(raw_cat) if isinstance(raw_cat, str) and raw_cat.startswith("[") else current_cats
+            except Exception:
+                orig_parsed = current_cats
+
+            if orig_parsed != target_cats or (should_break != had_breaking):
+                statements.append({
+                    "sql": "UPDATE posts SET category = ? WHERE id = ?;",
+                    "args": [target_json, str(post_id)],
+                })
+                if should_break and not had_breaking:
+                    added += 1
+                elif not should_break and had_breaking:
+                    removed += 1
+
+        if statements:
+            self.execute_batch(statements)
+            logging.info(f"[TursoDB] Synced Breaking News tags (latest {keep_count}): +{added} added, -{removed} removed across {len(statements)} row(s).")
+
+        return {"updated": len(statements), "added": added, "removed": removed}
+
 

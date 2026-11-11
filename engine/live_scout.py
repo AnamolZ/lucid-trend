@@ -6,7 +6,40 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from typing import List, Dict
 
+from service.data_cleaning.gemini import are_articles_semantic_duplicates
+
 logger = logging.getLogger(__name__)
+
+
+def _filter_fresh_candidates(
+    articles: List[Dict[str, str]], exclusions: List[str], min_fallback: int = 3
+) -> List[Dict[str, str]]:
+    """Filters out RSS candidates semantically matching recently published headlines."""
+    if not articles or not exclusions:
+        return articles
+
+    exclusion_docs = [{"title": excl} for excl in exclusions if excl]
+    fresh = [
+        art for art in articles
+        if not any(
+            are_articles_semantic_duplicates(
+                {"title": art.get("title", ""), "description": art.get("snippet", "")},
+                excl_doc,
+            )
+            for excl_doc in exclusion_docs
+        )
+    ]
+    if len(fresh) < min_fallback:
+        logger.warning(
+            f"[LiveScout] Only {len(fresh)} fresh candidates after exclusion filter; "
+            f"keeping all {len(articles)} candidates so drafting is not starved."
+        )
+        return articles
+
+    removed = len(articles) - len(fresh)
+    if removed:
+        logger.info(f"[LiveScout] Pre-filtered {removed} duplicate RSS candidates; {len(fresh)} fresh remain.")
+    return fresh
 
 def scout_category_intel(category_key: str, queries: List[str], max_items: int = 15) -> List[Dict[str, str]]:
     """Scouts verified real-time developments from the past 24 hours for a specific category."""
@@ -60,6 +93,7 @@ def scout_category_intel(category_key: str, queries: List[str], max_items: int =
 def format_category_dossier(articles: List[Dict[str, str]], exclusions: List[str]) -> str:
     """Formats raw intelligence and injects category-specific exclusion mandates."""
     sections = []
+    candidates = _filter_fresh_candidates(articles, exclusions)
 
     if exclusions:
         sections.append("CRITICAL EXCLUSION MANDATE (ALREADY PUBLISHED STORIES):")
@@ -69,10 +103,10 @@ def format_category_dossier(articles: List[Dict[str, str]], exclusions: List[str
         sections.append("")
 
     sections.append("VERIFIED REAL-TIME 24-HOUR INTELLIGENCE CANDIDATES:")
-    if not articles:
+    if not candidates:
         sections.append("No candidates retrieved from live scout. Identify the single most significant breaking 24h event in this category.")
     else:
-        for idx, art in enumerate(articles, 1):
+        for idx, art in enumerate(candidates, 1):
             sections.append(f"[{idx}] {art['title']}")
             if art.get("published"):
                 sections.append(f"    Published: {art['published']}")
