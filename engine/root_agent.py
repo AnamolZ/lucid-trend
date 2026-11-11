@@ -19,14 +19,14 @@ class RootAgentPipeline:
         """Proxies any standard AgentEngine properties to the underlying engine."""
         return getattr(self.root_engine, name)
 
-    async def agent_response(self, ask: str, category_key: str = "Technology", exclusions: list = None) -> str:
+    async def agent_response(self, ask: str, category_key: str = "Advancement", exclusions: list = None) -> str:
         """Executes the Category-Targeted 2-Stage Intelligence & Synthesis Pipeline."""
         from engine.slot_coordinator import CATEGORY_PILLARS
         from engine.live_scout import scout_category_intel, format_category_dossier
         from service.telemetry.quota_tracker import telemetry_tracker
         from config.model_pool import get_active_key, get_active_model
 
-        pillar_info = CATEGORY_PILLARS.get(category_key, CATEGORY_PILLARS["Technology"])
+        pillar_info = CATEGORY_PILLARS.get(category_key, CATEGORY_PILLARS["Advancement"])
         pillar_title = pillar_info["pillar"]
         queries = pillar_info["search_queries"]
 

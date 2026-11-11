@@ -10,25 +10,25 @@ logger = logging.getLogger(__name__)
 # Times in Asia/Kathmandu (NPT):
 # Slot 1: 17:45 NPT (08:00 EST - Pre-Open)  -> Geopolitics & Defense
 # Slot 2: 20:45 NPT (11:00 EST - Post-Open) -> Finance & Global Markets
-# Slot 3: 23:45 NPT (14:00 EST)             -> Technology, AI & Research
+# Slot 3: 23:45 NPT (14:00 EST)             -> Advancement, AI & Research
 # Slot 4: 02:45 NPT (17:00 EST - US Close)  -> Finance & Global Markets
-# Slot 5: 05:45 NPT (20:00 EST)             -> Technology, AI & Research
+# Slot 5: 05:45 NPT (20:00 EST)             -> Advancement, AI & Research
 # Slot 6: 08:45 NPT (23:00 EST)             -> Geopolitics & Defense
 # Slot 7: 11:45 NPT (02:00 EST)             -> Finance & Global Markets
-# Slot 8: 14:45 NPT (05:00 EST)             -> Technology, AI & Research
+# Slot 8: 14:45 NPT (05:00 EST)             -> Advancement, AI & Research
 
 CATEGORY_PILLARS = {
-    "Technology": {
-        "pillar": "Technology, AI & Scientific Research",
-        "primary_category": "AI & ML",
-        "allowed_domains": ["AI & ML", "Cloud & Infrastructure", "Developer Central", "Programming & Frameworks"],
+    "Advancement": {
+        "pillar": "Advancement, AI & Scientific Research",
+        "primary_category": "Advancement",
+        "allowed_domains": ["Advancement", "AI & ML", "Cloud & Infrastructure", "Developer Central", "Programming & Frameworks"],
         "search_queries": [
             "AI OR machine learning OR LLM OR semiconductor breakthrough when:1d",
             "cybersecurity vulnerability OR quantum computing OR developer release when:1d",
             "cloud infrastructure OR robotics OR microchip OR open source model when:2d",
             "autonomous systems OR biotech computing OR data center energy when:2d"
         ],
-        "keywords": ["ai", "tech", "software", "chip", "quantum", "compiler", "cloud", "model"]
+        "keywords": ["advancement", "ai", "tech", "software", "chip", "quantum", "compiler", "cloud", "model"]
     },
     "Finance": {
         "pillar": "Finance & Global Markets",
@@ -60,12 +60,12 @@ CATEGORY_PILLARS = {
 SLOT_SEQUENCE = [
     {"slot": 1, "hour_est": 8,  "category_key": "Geopolitics", "label": "Pre-Market Geopolitical Intelligence"},
     {"slot": 2, "hour_est": 11, "category_key": "Finance",     "label": "Post-Open Market Volatility & Trends"},
-    {"slot": 3, "hour_est": 14, "category_key": "Technology",  "label": "Midday Frontier Tech Architecture"},
+    {"slot": 3, "hour_est": 14, "category_key": "Advancement", "label": "Midday Frontier Advancement & Systems"},
     {"slot": 4, "hour_est": 17, "category_key": "Finance",     "label": "Market Close Digest & Corporate Moves"},
-    {"slot": 5, "hour_est": 20, "category_key": "Technology",  "label": "Scientific & Security Breakthroughs"},
+    {"slot": 5, "hour_est": 20, "category_key": "Advancement", "label": "Scientific & Security Breakthroughs"},
     {"slot": 6, "hour_est": 23, "category_key": "Geopolitics", "label": "Overnight Diplomatic & Strategic Shifts"},
     {"slot": 7, "hour_est": 2,  "category_key": "Finance",     "label": "Global & Asian/European Market Intelligence"},
-    {"slot": 8, "hour_est": 5,  "category_key": "Technology",  "label": "Morning Engineering & Systems Releases"},
+    {"slot": 8, "hour_est": 5,  "category_key": "Advancement", "label": "Morning Engineering & Advancement Releases"},
 ]
 
 def resolve_active_slot(manual_category: str = None) -> Dict[str, Any]:
@@ -78,7 +78,7 @@ def resolve_active_slot(manual_category: str = None) -> Dict[str, Any]:
                 matched_key = k
                 break
         if not matched_key:
-            matched_key = "Technology"
+            matched_key = "Advancement"
 
         return {
             "slot": 0,
