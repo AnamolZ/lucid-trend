@@ -3,17 +3,10 @@ name: Autonomous NewsPluk Publishing Engine
 on:
   schedule:
     # Autonomous 8-slot 3-hour micro-dispatch cycle (UTC: 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00)
-    # Times (Asia/Kathmandu NPT) & Target Category Pillars:
-    # 00:00 UTC (05:45 NPT / 20:00 EDT) -> Advancement, AI & Scientific Research
-    # 03:00 UTC (08:45 NPT / 23:00 EDT) -> Geopolitics, Defense & Global Security
-    # 06:00 UTC (11:45 NPT / 02:00 EDT) -> Finance & Global Markets
-    # 09:00 UTC (14:45 NPT / 05:00 EDT) -> Advancement, AI & Scientific Research
-    # 12:00 UTC (17:45 NPT / 08:00 EDT) -> Geopolitics, Defense & Global Security
-    # 15:00 UTC (20:45 NPT / 11:00 EDT) -> Finance & Global Markets
-    # 18:00 UTC (23:45 NPT / 14:00 EDT) -> Advancement, AI & Scientific Research
-    # 21:00 UTC (02:45 NPT / 17:00 EDT) -> Finance & Global Markets
-    # 17 */3 * * * avoids global :00 GitHub runner queue spikes while covering all 8 daily 3-hour slots
+    # Primary trigger (:17 past every 3 hours)
     - cron: '17 */3 * * *'
+    # Backup/Catch-up trigger (:47 past every 3 hours) to catch dropped or delayed GitHub runner queues
+    - cron: '47 */3 * * *'
   workflow_dispatch:
     inputs:
       category:
@@ -26,6 +19,11 @@ on:
           - 'Finance'
           - 'Geopolitics'
           - 'Advancement'
+      force:
+        description: 'Force publish even if slot was already satisfied in last 2 hours'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: publish-pipeline
@@ -69,7 +67,65 @@ jobs:
         working-directory: lucid-trend
         run: uv sync --frozen
 
+      - name: Check Slot Idempotency Guard
+        id: check_idempotency
+        working-directory: lucid-trend
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_RUN: ${{ github.event.inputs.force }}
+        run: |
+          uv run python -c "
+          import json, sys, os
+          from datetime import datetime, timezone
+
+          event = os.environ.get('EVENT_NAME', '')
+          force = os.environ.get('FORCE_RUN', 'false').lower() == 'true'
+
+          if force:
+              print('[Idempotency] Force run requested. Proceeding with execution.')
+              sys.exit(0)
+
+          feed_path = '../news-pluk/public/api/feed.json'
+          if not os.path.exists(feed_path):
+              print(f'[Idempotency] {feed_path} not found. Proceeding with execution.')
+              sys.exit(0)
+
+          try:
+              with open(feed_path, 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+              posts = data.get('posts', [])
+              if not posts:
+                  print('[Idempotency] No posts in feed.json. Proceeding.')
+                  sys.exit(0)
+
+              latest_post = posts[0]
+              pub_str = latest_post.get('published_at') or latest_post.get('created_at', '')
+              if not pub_str:
+                  sys.exit(0)
+
+              pub_time = datetime.fromisoformat(pub_str.replace('Z', '+00:00'))
+              now = datetime.now(timezone.utc)
+              elapsed_hours = (now - pub_time).total_seconds() / 3600.0
+
+              print(f'[Idempotency] Latest post: \"{latest_post.get(\"title\")}\"')
+              print(f'[Idempotency] Published: {pub_str} ({elapsed_hours:.2f} hours ago)')
+
+              # If automated cron and an article was published < 2.0 hours ago, skip to prevent duplicates
+              if elapsed_hours < 2.0 and event in ['schedule']:
+                  print('[Idempotency] Slot already satisfied within the last 2.0 hours. Skipping execution cleanly.')
+                  output_path = os.environ.get('GITHUB_OUTPUT')
+                  if output_path:
+                      with open(output_path, 'a', encoding='utf-8') as out:
+                          out.write('skip=true\n')
+                  sys.exit(0)
+
+              print('[Idempotency] Slot eligible for new dispatch. Proceeding.')
+          except Exception as e:
+              print(f'[Idempotency Warning] Check encountered an error ({e}). Proceeding defensively.')
+          "
+
       - name: Execute Publishing Pipeline
+        if: steps.check_idempotency.outputs.skip != 'true'
         working-directory: lucid-trend
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -99,6 +155,7 @@ jobs:
           fi
 
       - name: Bake Static CDN Payloads & Audio
+        if: steps.check_idempotency.outputs.skip != 'true'
         working-directory: lucid-trend
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
@@ -107,6 +164,7 @@ jobs:
           uv run python -c "from service.export.static_baker import bake_static_payloads; res = bake_static_payloads(limit=750, feed_limit=56); print('Baked payloads:', res)"
 
       - name: Deploy Flat CDN Assets to news-pluk
+        if: steps.check_idempotency.outputs.skip != 'true'
         id: deploy_cdn
         working-directory: news-pluk
         run: |
