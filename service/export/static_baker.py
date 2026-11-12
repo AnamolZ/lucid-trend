@@ -59,19 +59,19 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
                     if im.mode in ('RGBA', 'P'):
                         im = im.convert('RGB')
 
-                    # 1. Generate Mobile WebP stream (max-width 720, quality 75, method 6) -> 25 KB - 40 KB
+                    # 1. Generate Mobile Feed WebP stream (max-width 720, quality 78, method 6)
                     im_mobile = im
                     if im.width > 720:
                         m_height = int(im.height * (720 / im.width))
                         im_mobile = im.resize((720, m_height), Image.Resampling.LANCZOS)
-                    im_mobile.save(webp_path, 'WEBP', quality=75, method=6)
+                    im_mobile.save(webp_path, 'WEBP', quality=78, method=6)
 
-                    # 2. Generate Desktop Master JPEG (max-width 1200, quality 78, optimize=True) -> 80 KB - 110 KB
+                    # 2. Generate High-Quality Master JPEG for Desktop & Shorts (max-width 1200, quality 88, optimize=True)
                     im_desktop = im
                     if im.width > 1200:
                         d_height = int(im.height * (1200 / im.width))
                         im_desktop = im.resize((1200, d_height), Image.Resampling.LANCZOS)
-                    im_desktop.save(img_path, 'JPEG', quality=78, optimize=True)
+                    im_desktop.save(img_path, 'JPEG', quality=88, optimize=True)
             except Exception as enc_err:
                 logging.warning(f"[StaticBaker] PIL encoding error for {post_id}: {enc_err}, writing raw bytes.")
                 with open(img_path, "wb") as f:

@@ -105,7 +105,7 @@ def build_grounded_flux_prompt(
 
     style_suffix = (
         "authentic Reuters press photograph, documentary photojournalism, shot on 35mm full-frame camera, "
-        "35mm lens f/2.8, natural unretouched lighting, real-world textures, subtle film grain, 16:9 horizontal composition"
+        "35mm lens f/2.8, natural unretouched lighting, real-world textures, subtle film grain, balanced editorial full-frame composition"
     )
     return f"{base}, {style_suffix}"
 
@@ -171,9 +171,9 @@ class CloudflareAccountCoordinator:
         total_active = len(active_accounts)
         start_idx = self.account_index % total_active
 
-        # Multi-model cascade within Cloudflare: FLUX first, then high-efficiency SDXL-Lightning
+        # Multi-model cascade within Cloudflare: FLUX (8 steps for sharp detail) first, then SDXL-Lightning
         models = [
-            ("@cf/black-forest-labs/flux-1-schnell", 4),
+            ("@cf/black-forest-labs/flux-1-schnell", 8),
             ("@cf/bytedance/stable-diffusion-xl-lightning", 4)
         ]
 
@@ -241,7 +241,7 @@ def generate_pollinations_image(prompt: str) -> str:
     pollen_key = os.getenv("POLLINATIONS_API_KEY") or os.getenv("POLLEN_API_KEY")
 
     seed = random.randint(1, 9999999)
-    url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1280&height=720&model=flux&nologo=true&seed={seed}"
+    url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&model=flux&enhance=true&nologo=true&seed={seed}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     if pollen_key:
         headers["Authorization"] = f"Bearer {pollen_key.strip()}"
@@ -263,7 +263,7 @@ def generate_pollinations_image(prompt: str) -> str:
             logging.warning(f"[Pollinations] HTTP {he.code}: {err_body}")
             if attempt == 2:
                 # Failover to turbo model on Pollinations if FLUX is heavily congested
-                url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1280&height=720&model=turbo&nologo=true&seed={seed}"
+                url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&model=turbo&nologo=true&seed={seed}"
             time.sleep(4)
         except Exception as e:
             logging.warning(f"[Pollinations] Generation attempt #{attempt} failed: {e}")
