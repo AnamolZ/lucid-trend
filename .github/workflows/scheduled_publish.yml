@@ -35,7 +35,7 @@ jobs:
   publish:
     name: Scout, Synthesize, Bake & Publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       NODE_NO_WARNINGS: "1"
 
