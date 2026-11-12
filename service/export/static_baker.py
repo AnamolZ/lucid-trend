@@ -66,12 +66,17 @@ def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> 
                         im_mobile = im.resize((720, m_height), Image.Resampling.LANCZOS)
                     im_mobile.save(webp_path, 'WEBP', quality=78, method=6)
 
-                    # 2. Generate High-Quality Master JPEG for Desktop & Shorts (max-width 1200, quality 88, optimize=True)
+                    # 2. Generate High-Quality Master JPEG for Desktop & Articles (max-width 1200, quality 88, optimize=True)
                     im_desktop = im
                     if im.width > 1200:
                         d_height = int(im.height * (1200 / im.width))
                         im_desktop = im.resize((1200, d_height), Image.Resampling.LANCZOS)
                     im_desktop.save(img_path, 'JPEG', quality=88, optimize=True)
+
+                    # 3. Generate High-Definition Crisp Master for Shorts (_shorts.jpg, quality 92)
+                    shorts_filename = f"{post_id}_shorts.jpg"
+                    shorts_path = os.path.join(img_dir, shorts_filename)
+                    im_desktop.save(shorts_path, 'JPEG', quality=92, optimize=True)
             except Exception as enc_err:
                 logging.warning(f"[StaticBaker] PIL encoding error for {post_id}: {enc_err}, writing raw bytes.")
                 with open(img_path, "wb") as f:
