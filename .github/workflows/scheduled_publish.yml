@@ -36,6 +36,9 @@ jobs:
     name: Scout, Synthesize, Bake & Publish
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: write
     env:
       NODE_NO_WARNINGS: "1"
 
@@ -142,3 +145,48 @@ jobs:
           KEEP_PRODUCTION_COUNT: "2"
         run: |
           uv run python cleanup_vercel.py
+
+      - name: Auto-Prune Old Workflows (Retain Only Latest 5)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          node -e '
+            const token = process.env.GH_TOKEN;
+            const repo = process.env.REPO;
+            if (!token || !repo) {
+              console.log("[WorkflowPruner] No GH_TOKEN or REPO found, skipping.");
+              process.exit(0);
+            }
+            const headers = {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json",
+              "User-Agent": "WorkflowPruner"
+            };
+            (async () => {
+              try {
+                const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=100`, { headers });
+                if (!res.ok) {
+                  console.log(`[WorkflowPruner] Failed to fetch runs: ${res.status}`);
+                  return;
+                }
+                const data = await res.json();
+                const runs = data.workflow_runs || [];
+                if (runs.length <= 5) {
+                  console.log(`[WorkflowPruner] Total runs (${runs.length}) <= 5. No pruning needed.`);
+                  return;
+                }
+                const toPrune = runs.slice(5);
+                console.log(`[WorkflowPruner] Keeping latest 5 runs. Deleting ${toPrune.length} older run(s)...`);
+                let count = 0;
+                for (const r of toPrune) {
+                  const del = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${r.id}`, { method: "DELETE", headers });
+                  if (del.status === 204 || del.status === 200) count++;
+                }
+                console.log(`[WorkflowPruner] Cleaned up ${count} older workflow run(s). Exactly 5 remain.`);
+              } catch (err) {
+                console.log("[WorkflowPruner] Error:", err.message);
+              }
+            })();
+          '
