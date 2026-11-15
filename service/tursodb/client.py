@@ -29,11 +29,18 @@ class TursoDBService:
 
         requests_payload = []
         for stmt in statements:
+            args_payload = []
+            for arg in stmt.get("args", []):
+                if arg is None:
+                    args_payload.append({"type": "null"})
+                else:
+                    args_payload.append({"type": "text", "value": str(arg)})
+
             requests_payload.append({
                 "type": "execute",
                 "stmt": {
                     "sql": stmt["sql"],
-                    "args": [{"type": "text", "value": str(arg) if arg is not None else None} for arg in stmt.get("args", [])]
+                    "args": args_payload
                 }
             })
 
@@ -373,5 +380,81 @@ class TursoDBService:
             logging.info(f"[TursoDB] Synced Breaking News tags (latest {keep_count}): +{added} added, -{removed} removed across {len(statements)} row(s).")
 
         return {"updated": len(statements), "added": added, "removed": removed}
+
+    def insert_shorts(self, shorts_documents: list) -> list:
+        """Persists short-form card documents into Turso 'shorts' table."""
+        if not self.http_url or not shorts_documents:
+            return []
+
+        statements = []
+        inserted_ids = []
+
+        upsert_query = """
+            INSERT INTO shorts (id, title, facts, news_items, image, category, published_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                facts = excluded.facts,
+                news_items = excluded.news_items,
+                image = excluded.image,
+                category = excluded.category,
+                published_at = excluded.published_at;
+        """
+
+        for doc in shorts_documents:
+            short_id = doc.get("id")
+            title = doc.get("title", "")
+            raw_facts = doc.get("facts", [])
+            facts = json.dumps(raw_facts) if isinstance(raw_facts, list) else str(raw_facts)
+            raw_items = doc.get("news_items", [])
+            news_items = json.dumps(raw_items) if isinstance(raw_items, list) else str(raw_items)
+            image = doc.get("image", "")
+            raw_cat = doc.get("category", ["Shorts"])
+            category = json.dumps(raw_cat) if isinstance(raw_cat, list) else str(raw_cat)
+            published_at = doc.get("published_at") or datetime.now(timezone.utc).isoformat()
+
+            statements.append({
+                "sql": upsert_query,
+                "args": [short_id, title, facts, news_items, image, category, published_at]
+            })
+            inserted_ids.append(short_id)
+
+        try:
+            self.execute_batch(statements)
+            logging.info(f"[TursoDB] Upserted {len(inserted_ids)} records to dedicated 'shorts' table.")
+            return inserted_ids
+        except Exception as e:
+            logging.error(f"[TursoDB] Shorts insert error: {e}")
+            return []
+
+    def fetch_recent_shorts_for_export(self, limit: int = 50) -> list:
+        """Retrieves recent shorts from the dedicated 'shorts' table."""
+        if not self.http_url:
+            return []
+        sql = "SELECT id, title, facts, news_items, image, category, published_at FROM shorts ORDER BY published_at DESC LIMIT ?;"
+        res = self.execute(sql, [limit])
+        shorts = []
+        try:
+            results = res.get("results", [])
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                cols = [c["name"] for c in results[0].get("response", {}).get("result", {}).get("cols", [])]
+                for row in rows:
+                    item_dict = {}
+                    for col_idx, col_name in enumerate(cols):
+                        val_obj = row[col_idx]
+                        val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                        if col_name in ("facts", "news_items", "category") and isinstance(val, str) and (val.startswith("[") or val.startswith("{")):
+                            try:
+                                item_dict[col_name] = json.loads(val)
+                            except Exception:
+                                item_dict[col_name] = val
+                        else:
+                            item_dict[col_name] = val
+                    shorts.append(item_dict)
+        except Exception as e:
+            logging.error(f"[TursoDB] Error fetching shorts: {e}")
+        return shorts
+
 
 

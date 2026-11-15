@@ -12,6 +12,7 @@ from typing import Optional, List
 from fastapi import FastAPI, Depends, HTTPException, Security, status, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -82,6 +83,15 @@ app = FastAPI(
     description="Autonomous Tech Intelligence Engine - Management & Execution API",
     version="1.0.0"
 )
+
+# Mount public directory to serve edge payloads and media
+_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_public_dir = os.path.join(_base_dir, "public")
+if os.path.exists(_public_dir):
+    app.mount("/api", StaticFiles(directory=os.path.join(_public_dir, "api")), name="api_static")
+    app.mount("/images", StaticFiles(directory=os.path.join(_public_dir, "images")), name="images_static")
+    if os.path.exists(os.path.join(_public_dir, "audio")):
+        app.mount("/audio", StaticFiles(directory=os.path.join(_public_dir, "audio")), name="audio_static")
 
 ensure_temp_dir()
 

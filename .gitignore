@@ -25,4 +25,7 @@ temp/
 *-adminsdk-*.json
 
 # Generated static outputs (baked into news-pluk)
-public/
+public/
+data/*.db
+data/*.json
+

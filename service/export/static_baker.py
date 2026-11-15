@@ -155,8 +155,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
     if target_dirs is None:
         target_dirs = [
             os.path.join(base_dir, "public", "api"),
-            os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api"),
+            os.path.join(os.path.dirname(base_dir), "news-pluk-main", "public", "api"),
         ]
+        legacy_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api")
+        if os.path.exists(legacy_news_pluk):
+            target_dirs.append(legacy_news_pluk)
         legacy_app_api = os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api")
         if os.path.exists(legacy_app_api):
             target_dirs.append(legacy_app_api)
@@ -265,11 +268,48 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
     feed_json_str = json.dumps(feed_payload, indent=2, ensure_ascii=False)
     search_json_str = json.dumps(search_index, indent=2, ensure_ascii=False)
 
+    # Fetch dedicated shorts from 'shorts' table, with graceful fallback to posts facts
+    db_shorts = turso.fetch_recent_shorts_for_export(limit=50)
+    shorts_cards = []
+    if db_shorts:
+        for s in db_shorts:
+            shorts_cards.append({
+                "id": s["id"],
+                "title": s["title"],
+                "category": s.get("category", ["Shorts"]),
+                "image": s.get("image", ""),
+                "facts": s.get("facts", []),
+                "news_items": s.get("news_items", []),
+                "published_at": s.get("published_at", ""),
+            })
+    else:
+        for p in formatted_feed_posts:
+            if p.get("facts"):
+                shorts_cards.append({
+                    "id": p["id"],
+                    "title": p["title"],
+                    "category": p["category"],
+                    "image": p["thumbnail"],
+                    "facts": p["facts"],
+                    "published_at": p["published_at"],
+                })
+
+    shorts_payload = {
+        "status": "success",
+        "totalShorts": len(shorts_cards),
+        "shorts": shorts_cards,
+    }
+    shorts_json_str = json.dumps(shorts_payload, indent=2, ensure_ascii=False)
+
     for dest in target_dirs:
         try:
             feed_path = os.path.join(dest, "feed.json")
             with open(feed_path, "w", encoding="utf-8") as f:
                 f.write(feed_json_str)
+
+            shorts_path = os.path.join(dest, "shorts.json")
+            with open(shorts_path, "w", encoding="utf-8") as f:
+                f.write(shorts_json_str)
 
             search_path = os.path.join(dest, "search-index.json")
             with open(search_path, "w", encoding="utf-8") as f:
@@ -277,7 +317,7 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
 
             logging.info(f"[StaticBaker] Successfully baked {len(formatted_feed_posts)} articles to {dest}")
         except Exception as e:
-            logging.error(f"[StaticBaker] Error writing feed.json to {dest}: {e}")
+            logging.error(f"[StaticBaker] Error writing feed.json/shorts.json to {dest}: {e}")
 
     active_ids = {str(item.get("id")) for item in raw_posts if item.get("id")}
     pruned_count = prune_orphaned_assets(active_ids, target_dirs)

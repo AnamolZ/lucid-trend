@@ -1,0 +1,9 @@
+# Add one Instagram profile URL or username per line:
+https://www.instagram.com/daytrading/
+https://www.instagram.com/cryptodaily/
+https://www.instagram.com/coinmarketcap/
+https://www.instagram.com/cryptocrunchapp/
+https://www.instagram.com/cryptocrunchnews/
+https://www.instagram.com/financialtimes
+https://www.instagram.com/coinsauce/
+https://www.instagram.com/targetingfinance/
