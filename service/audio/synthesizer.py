@@ -47,8 +47,8 @@ def clean_markdown_for_speech(title: str, markdown_content: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{2,}", "\n\n", text).strip()
 
-    # Prepend title with editorial introduction
-    intro = f"{title}. Published by NewsPluk Technical Editorial.\n\n"
+    # Prepend title with clean brief pause
+    intro = f"{title}.\n\n"
     full_narrative = intro + text
 
     # Cap narrative length if exceptionally verbose (keeps audio crisp and under 10 minutes)
@@ -78,6 +78,9 @@ async def synthesize_audio_async(
             os.path.join(base_dir, "public", "audio"),
             os.path.join(os.path.dirname(base_dir), "news-pluk-main", "public", "audio"),
         ]
+        repo_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk-repo", "public", "audio")
+        if os.path.exists(repo_news_pluk):
+            output_dirs.append(repo_news_pluk)
         legacy_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "audio")
         if os.path.exists(legacy_news_pluk):
             output_dirs.append(legacy_news_pluk)
