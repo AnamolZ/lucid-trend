@@ -155,20 +155,11 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
     if target_dirs is None:
         target_dirs = [
             os.path.join(base_dir, "public", "api"),
-            os.path.join(os.path.dirname(base_dir), "news-pluk-main", "public", "api"),
+            os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api"),
         ]
-        repo_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk-repo", "public", "api")
-        if os.path.exists(repo_news_pluk):
-            target_dirs.append(repo_news_pluk)
-        legacy_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "api")
-        if os.path.exists(legacy_news_pluk):
-            target_dirs.append(legacy_news_pluk)
-        legacy_app_api = os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api")
-        if os.path.exists(legacy_app_api):
-            target_dirs.append(legacy_app_api)
-        dist_api = os.path.join(os.path.dirname(base_dir), "news-pluk", "dist", "api")
-        if os.path.exists(os.path.join(os.path.dirname(base_dir), "news-pluk", "dist")):
-            target_dirs.append(dist_api)
+        mobile_app_api = os.path.join(os.path.dirname(base_dir), "news-pluk-application", "apps", "mobile", "public", "api")
+        if os.path.exists(mobile_app_api):
+            target_dirs.append(mobile_app_api)
 
     for d in target_dirs:
         os.makedirs(d, exist_ok=True)

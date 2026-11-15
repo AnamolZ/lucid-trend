@@ -76,14 +76,8 @@ async def synthesize_audio_async(
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         output_dirs = [
             os.path.join(base_dir, "public", "audio"),
-            os.path.join(os.path.dirname(base_dir), "news-pluk-main", "public", "audio"),
+            os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "audio"),
         ]
-        repo_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk-repo", "public", "audio")
-        if os.path.exists(repo_news_pluk):
-            output_dirs.append(repo_news_pluk)
-        legacy_news_pluk = os.path.join(os.path.dirname(base_dir), "news-pluk", "public", "audio")
-        if os.path.exists(legacy_news_pluk):
-            output_dirs.append(legacy_news_pluk)
 
     for d in output_dirs:
         os.makedirs(d, exist_ok=True)

@@ -11,8 +11,7 @@ from service.shorts.insert_shorts import insert_shorts
 from service.export.static_baker import bake_static_payloads
 from service.audio.synthesizer import synthesize_audio
 
-NEWS_PLUK_MAIN_ROOT = ROOT_DIR.parent / "news-pluk-main"
-NEWS_PLUK_REPO_ROOT = ROOT_DIR.parent / "news-pluk-repo"
+NEWS_PLUK_ROOT = ROOT_DIR.parent / "news-pluk"
 
 # Strict official categories in Lucid Trend
 APPROVED_CATEGORIES = [
@@ -165,9 +164,9 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
 
     # Copy lead image to public CDN images
     if lead_temp_image.exists():
-        dest_roots = [ROOT_DIR, NEWS_PLUK_MAIN_ROOT]
-        if NEWS_PLUK_REPO_ROOT.exists():
-            dest_roots.append(NEWS_PLUK_REPO_ROOT)
+        dest_roots = [ROOT_DIR]
+        if NEWS_PLUK_ROOT.exists():
+            dest_roots.append(NEWS_PLUK_ROOT)
         for dest_root in dest_roots:
             img_dest = dest_root / "public" / "images"
             img_dest.mkdir(parents=True, exist_ok=True)
@@ -215,9 +214,9 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
     short_img_path = f"/images/{short_img_name}"
 
     if lead_temp_image.exists():
-        dest_roots = [ROOT_DIR, NEWS_PLUK_MAIN_ROOT]
-        if NEWS_PLUK_REPO_ROOT.exists():
-            dest_roots.append(NEWS_PLUK_REPO_ROOT)
+        dest_roots = [ROOT_DIR]
+        if NEWS_PLUK_ROOT.exists():
+            dest_roots.append(NEWS_PLUK_ROOT)
         for dest_root in dest_roots:
             img_dest = dest_root / "public" / "images"
             img_dest.mkdir(parents=True, exist_ok=True)
