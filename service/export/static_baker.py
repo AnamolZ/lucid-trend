@@ -207,13 +207,30 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
 
         read_time = calculate_reading_time(content)
 
+        # Clean description so it never ends with mid-sentence ellipsis
+        clean_desc = desc or ""
+        if clean_desc.endswith("..."):
+            clean_desc = clean_desc[:-3].rsplit(" ", 1)[0].rstrip(" ,;:-") + "."
+
+        # Extract 2 crisp sentences for mobile Shorts takeaways
+        import re
+        desc_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_desc) if len(s.strip()) > 15]
+        s2 = desc_sentences[1] if len(desc_sentences) > 1 else ""
+        if not s2 and content:
+            paras = [p.strip() for p in content.split("\n\n") if p.strip() and not p.startswith("#")]
+            if len(paras) > 1:
+                s2 = paras[1].split(".")[0].strip()
+                if s2 and not s2.endswith("."):
+                    s2 += "."
+        shorts_content = f"## Impact\n{s2}\n\n" if s2 else ""
+
         # Full individual post document
         full_doc = {
             "id": post_id,
             "title": title,
             "slug": item.get("slug") or post_id,
-            "description": desc,
-            "excerpt": desc,
+            "description": clean_desc,
+            "excerpt": clean_desc,
             "content": content,
             "image": static_image,
             "thumbnail": static_thumb,
@@ -231,8 +248,9 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
             "id": post_id,
             "title": title,
             "slug": item.get("slug") or post_id,
-            "description": desc,
-            "excerpt": desc,
+            "description": clean_desc,
+            "excerpt": clean_desc,
+            "content": shorts_content,
             "image": static_image,
             "thumbnail": static_thumb,
             "audioUrl": audio_url,

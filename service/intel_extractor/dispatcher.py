@@ -43,17 +43,35 @@ def slugify(text: str) -> str:
     return re.sub(r"[\s_-]+", "-", cleaned).strip("-")[:75]
 
 
-def extract_concise_description(summary: str, max_length: int = 200) -> str:
-    """Extract a clean, punchy 1-2 sentence synopsis for cards and previews."""
+def extract_concise_description(summary: str, max_sentence_len: int = 125) -> str:
+    """
+    Extracts 2 crisp, complete, punchy sentences for cards, previews, and Shorts takeaways.
+    Never truncates sentences with '...' mid-thought.
+    """
     if not summary:
         return ""
-    sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
-    desc = sentences[0] if sentences else summary
-    if len(desc) < 80 and len(sentences) > 1:
-        desc = f"{sentences[0]} {sentences[1]}"
-    if len(desc) > max_length:
-        desc = desc[:max_length].rsplit(" ", 1)[0] + "..."
-    return desc.strip()
+
+    raw_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary.strip()) if s.strip()]
+    if not raw_sentences:
+        return ""
+
+    clean_sentences = []
+    for s in raw_sentences:
+        s = re.sub(r"^[•\s\-\*]+", "", s).strip()
+        # If sentence is excessively long, split at natural conjunction/subordinate clause
+        if len(s) > max_sentence_len:
+            clause_match = re.search(r"^(.*?)(?:,\s*(?:while|as|amid|with|led by|including)\b)", s, re.IGNORECASE)
+            if clause_match and len(clause_match.group(1)) >= 35:
+                s = clause_match.group(1).strip()
+            elif len(s) > max_sentence_len:
+                s = s[:max_sentence_len].rsplit(" ", 1)[0].rstrip(" ,;:-")
+        if not s.endswith((".", "!", "?")):
+            s = f"{s}."
+        clean_sentences.append(s)
+        if len(clean_sentences) >= 2:
+            break
+
+    return " ".join(clean_sentences).strip()
 
 
 def build_breaking_news_image_prompt(headline: str) -> str:
