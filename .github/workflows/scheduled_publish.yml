@@ -176,6 +176,8 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
             git commit -m "chore(cdn): publish new editorial dispatches and baked audio"
+            # Pull latest changes with rebase to avoid race conditions with other workflows
+            git pull --rebase origin main || true
             git push origin main
             echo "Successfully deployed new static dispatches to Vercel CDN Edge!"
             echo "has_changes=true" >> $GITHUB_OUTPUT
