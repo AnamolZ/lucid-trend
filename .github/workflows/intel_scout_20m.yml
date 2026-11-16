@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Check out lucid-trend
@@ -82,3 +83,54 @@ jobs:
             git push origin main
             echo "Successfully deployed fresh shorts to Edge CDN!"
           fi
+
+      - name: Auto-Prune Old Runs (Retain Only Latest Run)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          node -e '
+            const token = process.env.GH_TOKEN;
+            const repo = process.env.REPO;
+            const currentRunId = process.env.CURRENT_RUN_ID;
+            if (!token || !repo) {
+              console.log("[WorkflowPruner] No GH_TOKEN or REPO found, skipping.");
+              process.exit(0);
+            }
+            const headers = {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json",
+              "User-Agent": "WorkflowPruner"
+            };
+            (async () => {
+              try {
+                // Fetch previous runs of this specific workflow
+                const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/intel_scout_20m.yml/runs?per_page=100`, { headers });
+                if (!res.ok) {
+                  console.log(`[WorkflowPruner] Failed to fetch runs: ${res.status}`);
+                  return;
+                }
+                const data = await res.json();
+                const runs = data.workflow_runs || [];
+                // Target all previous runs (completed, failed, or older) except the current executing run
+                const previousRuns = runs.filter(r => String(r.id) !== String(currentRunId));
+                if (previousRuns.length === 0) {
+                  console.log("[WorkflowPruner] No previous runs to delete. Working tree is clean.");
+                  return;
+                }
+                console.log(`[WorkflowPruner] Deleting ${previousRuns.length} previous run(s) to keep workflow history pristine...`);
+                let deletedCount = 0;
+                for (const r of previousRuns) {
+                  const del = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${r.id}`, { method: "DELETE", headers });
+                  if (del.status === 204 || del.status === 200) {
+                    deletedCount++;
+                  }
+                }
+                console.log(`[WorkflowPruner] Successfully deleted ${deletedCount} previous workflow run(s). Clean!`);
+              } catch (err) {
+                console.log("[WorkflowPruner] Error:", err.message);
+              }
+            })();
+          '
