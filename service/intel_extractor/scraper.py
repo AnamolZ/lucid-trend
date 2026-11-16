@@ -98,12 +98,23 @@ def scrape_profile(loader: instaloader.Instaloader, username: str) -> List[Dict]
                             })
                         except Exception as e:
                             print(f"  [!] Story download error: {e}")
+        except instaloader.exceptions.LoginRequiredException:
+            print(f"  [!] Instagram session expired or requires re-authentication. Skipping stories for @{username}.")
         except Exception as e:
             print(f"  [!] Stories notice for @{username}: {e}")
 
     # Check feed posts with fallback
     try:
         latest_post = next(profile.get_posts(), None)
+    except instaloader.exceptions.LoginRequiredException:
+        print(f"  [!] Login required for @{username} feed. Switching to public loader...")
+        anon_loader = instaloader.Instaloader(download_pictures=False, download_videos=False, save_metadata=False)
+        try:
+            anon_profile = instaloader.Profile.from_username(anon_loader.context, username)
+            latest_post = next(anon_profile.get_posts(), None)
+        except Exception as anon_err:
+            print(f"  [-] Public fetch failed for @{username}: {anon_err}")
+            latest_post = None
     except Exception:
         anon_loader = instaloader.Instaloader(download_pictures=False, download_videos=False, save_metadata=False)
         try:

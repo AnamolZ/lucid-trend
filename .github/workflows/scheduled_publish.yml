@@ -135,7 +135,7 @@ jobs:
           CLOUDFLARE_ACCOUNTS: ${{ secrets.CLOUDFLARE_ACCOUNTS }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'lt_sec_f30fc7a1ea1603eba5a4c6458f6ec307' }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
           RETENTION_DAYS: ${{ vars.RETENTION_DAYS || '90' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
@@ -188,7 +188,7 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY || 'newspluk_notify_secret_2026' }}
+          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
         run: |
           echo "Waiting 15s for Vercel CDN deployment propagation..."
           sleep 15

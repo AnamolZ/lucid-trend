@@ -84,12 +84,18 @@ async def synthesize_audio_async(
 
     narrative_text = clean_markdown_for_speech(title, content)
     filename = f"{post_id}.m4a"
+    tmp_filename = f"{post_id}.tmp.m4a"
     primary_path = os.path.join(output_dirs[0], filename)
+    tmp_primary_path = os.path.join(output_dirs[0], tmp_filename)
 
     try:
         logging.info(f"[AudioSynthesizer] Synthesizing narration for '{post_id}' using {voice}...")
         comm = edge_tts.Communicate(narrative_text, voice)
-        await comm.save(primary_path)
+        await comm.save(tmp_primary_path)
+
+        # Atomic rename to avoid file lock collisions during active reads
+        if os.path.exists(tmp_primary_path):
+            os.replace(tmp_primary_path, primary_path)
 
         # Mirror file to secondary destinations (e.g. news-pluk/public/audio)
         if os.path.exists(primary_path):
@@ -100,8 +106,10 @@ async def synthesize_audio_async(
             for dest_dir in output_dirs[1:]:
                 try:
                     dest_path = os.path.join(dest_dir, filename)
-                    with open(dest_path, "wb") as f:
+                    tmp_dest_path = os.path.join(dest_dir, tmp_filename)
+                    with open(tmp_dest_path, "wb") as f:
                         f.write(file_bytes)
+                    os.replace(tmp_dest_path, dest_path)
                 except Exception as mirror_err:
                     logging.warning(f"[AudioSynthesizer] Failed mirroring audio to {dest_dir}: {mirror_err}")
 
