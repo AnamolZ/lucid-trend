@@ -1,8 +1,12 @@
 import json
+import logging
 from typing import Optional, Dict
 import requests
 
 from config.settings import OPENROUTER_API_KEY, OPENROUTER_MODEL
+from service.image_helper.get_image import CloudflareAccountCoordinator
+
+logger = logging.getLogger("NewsSynthesizer")
 
 
 class NewsSynthesizer:
@@ -10,25 +14,22 @@ class NewsSynthesizer:
         self.api_key = api_key
         self.model = model
         self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
+        self.cf_coordinator = CloudflareAccountCoordinator()
 
     def synthesize(self, combined_text: str) -> Optional[Dict]:
-        if not self.api_key:
-            print("[AI] Error: Missing OPENROUTER_API_KEY in configuration.")
-            return None
-
         prompt = f"""
 You are an elite, objective financial, tech, and macroeconomic news editor.
-You have been provided with raw information and text extracted from multiple Instagram news feeds.
+You have been provided with raw information and text extracted from multiple market and social intel feeds.
 
 Raw Extracted Intel:
 {combined_text}
 
 Strict Editorial Rules:
 1. Filter out all social media noise, conversational banter, emojis, and meme commentary.
-2. NEVER explain or treat memes, jokes, or engagement bait as news. If an image contains a factual event, financial statistic, or regulatory action, extract ONLY that hard fact.
+2. If an item contains a factual event, financial statistic, or regulatory action, extract ONLY that hard fact.
 3. Group distinct events into separate news items inside "news_items".
 4. Top-level "headline" and "executive_summary" must synthesize the major macroeconomic/market narrative tying the key stories together.
-5. Top-level "facts" must be an array of pure, high-impact quantifiable bullet points (each starting with "• ") capturing the key verifiable metrics, statistics, and figures across the news. Do NOT include sub-headlines, conversational prose, or headers in "facts".
+5. Top-level "facts" must be an array of pure, high-impact quantifiable bullet points (each starting with "• ") capturing the key verifiable metrics, statistics, and figures across the news.
 6. For EACH news item in "news_items":
    - "headline": Punchy, professional news headline for that specific story.
    - "category": Clean category (e.g., "Tech & Equities", "Cryptocurrency", "Macro & Infrastructure").
@@ -56,30 +57,85 @@ You MUST respond with a strictly valid JSON object matching this schema exactly 
 }}
 """
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-        }
+        # 1. Primary Strategy: OpenRouter (if API key provided)
+        if self.api_key:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                }
+                resp = requests.post(self.endpoint, headers=headers, json=payload, timeout=60)
+                if resp.status_code == 200:
+                    content = resp.json()["choices"][0]["message"]["content"].strip()
+                    parsed = self._clean_and_parse_json(content)
+                    if parsed:
+                        return parsed
+            except Exception as e:
+                logger.warning(f"[NewsSynthesizer] OpenRouter attempt failed: {e}. Falling back to Cloudflare AI...")
+
+        # 2. Resilient Fallback: Cloudflare Workers AI Account Pool (Zero API cost, High Reliability)
+        cf_accounts = self.cf_coordinator.get_accounts()
+        if cf_accounts:
+            models_to_try = [
+                "@cf/meta/llama-3.1-70b-instruct",
+                "@cf/meta/llama-3.1-8b-instruct",
+                "@cf/meta/llama-3.2-3b-instruct",
+            ]
+            for aid, tok in cf_accounts:
+                for cf_model in models_to_try:
+                    url = f"https://api.cloudflare.com/client/v4/accounts/{aid}/ai/run/{cf_model}"
+                    headers = {
+                        "Authorization": f"Bearer {tok}",
+                        "Content-Type": "application/json",
+                    }
+                    payload = {
+                        "messages": [
+                            {"role": "system", "content": "You are a professional financial news editor. Respond strictly with valid JSON only."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "max_tokens": 2048,
+                        "temperature": 0.2,
+                    }
+                    try:
+                        resp = requests.post(url, headers=headers, json=payload, timeout=45)
+                        if resp.status_code == 200:
+                            raw_reply = resp.json().get("result", {}).get("response", "")
+                            parsed = self._clean_and_parse_json(raw_reply)
+                            if parsed and parsed.get("headline"):
+                                print(f"[NewsSynthesizer] Successfully synthesized news via Cloudflare AI ({cf_model})!")
+                                return parsed
+                    except Exception as cf_err:
+                        logger.warning(f"[NewsSynthesizer] Cloudflare model {cf_model} attempt error: {cf_err}")
+                        continue
+
+        print("[NewsSynthesizer] Error: All AI synthesis providers failed or are unconfigured.")
+        return None
+
+    def _clean_and_parse_json(self, content: str) -> Optional[Dict]:
+        """Cleans markdown wrappers and sanitizes text to extract valid JSON."""
+        if not content:
+            return None
+        text = content.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        # Find first '{' and last '}'
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            text = text[start:end + 1]
 
         try:
-            resp = requests.post(self.endpoint, headers=headers, json=payload, timeout=60)
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"].strip()
-
-            if content.startswith("```"):
-                lines = content.splitlines()
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                content = "\n".join(lines).strip()
-
-            return json.loads(content)
-        except Exception as e:
-            print(f"[AI] Synthesis error: {e}")
+            return json.loads(text)
+        except Exception:
             return None
