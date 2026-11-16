@@ -1,0 +1,84 @@
+name: Autonomous 20-Min Social Intel & Shorts Pipeline
+
+on:
+  schedule:
+    # Trigger every 20 minutes (cron runs at :05, :25, :45 past every hour)
+    - cron: '5,25,45 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force extraction and publication immediately'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: intel-pipeline
+  cancel-in-progress: false
+
+jobs:
+  extract-and-publish:
+    name: Public Intel Scout, OCR & Shorts Publisher
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out lucid-trend
+        uses: actions/checkout@v7
+        with:
+          path: lucid-trend
+
+      - name: Check out news-pluk (Static Delivery Platform)
+        uses: actions/checkout@v7
+        with:
+          repository: AnamolZ/news-pluk
+          path: news-pluk
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Install uv (Fast Package Manager)
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "lucid-trend/uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install Dependencies
+        working-directory: lucid-trend
+        run: uv sync --frozen
+
+      - name: Run Anonymous Intel Extraction Pipeline
+        working-directory: lucid-trend
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'nvidia/nemotron-3.5-super-vl:free' }}
+          CLOUDFLARE_ACCOUNTS: ${{ secrets.CLOUDFLARE_ACCOUNTS }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+          TZ: Asia/Kathmandu
+        run: |
+          echo "Starting 20-minute anonymous public social intel extraction..."
+          uv run python -m service.intel_extractor.pipeline
+
+      - name: Deploy Fresh Shorts & Media to news-pluk CDN
+        working-directory: news-pluk
+        run: |
+          git config --global user.name "Anamol"
+          git config --global user.email "anmoldkl971@gmail.com"
+          git add public/api/shorts.json public/api/feed.json public/images
+          if git diff --staged --quiet; then
+            echo "No new shorts or media generated in this 20-minute cycle."
+          else
+            git commit -m "chore(shorts): auto-publish latest social intel and visual shorts"
+            git push origin main
+            echo "Successfully deployed fresh shorts to Edge CDN!"
+          fi
