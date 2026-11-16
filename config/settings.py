@@ -17,8 +17,8 @@ PROFILES_FILE = DATA_DIR / "profiles.txt"
 INTEL_DB_FILE = DATA_DIR / "instagram_intel.db"
 OUTPUT_JSON_FILE = DATA_DIR / "latest_news_digest.json"
 
-INSTAGRAM_USER = os.getenv("INSTAGRAM_USER", "scrapy0702")
-INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "")
+INSTAGRAM_USER = os.getenv("INSTAGRAM_USER", "").strip()
+INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "").strip()
 INSTAGRAM_SESSIONID = os.getenv("INSTAGRAM_SESSIONID", "").strip()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()

@@ -2,14 +2,14 @@ import time
 from datetime import datetime
 from service.intel_extractor.pipeline import run_pipeline
 
-INTERVAL_MINUTES = 30
+INTERVAL_MINUTES = 20
 INTERVAL_SECONDS = INTERVAL_MINUTES * 60
 
 
 def start_scheduler():
-    """Runs social intel extraction, synthesis, and edge publication every 30 minutes."""
+    """Runs social intel extraction, synthesis, and edge publication every 20 minutes."""
     print("=" * 65)
-    print(f"Starting Lucid Trend 30-Minute Intelligence Scheduler (Interval: {INTERVAL_MINUTES}m)")
+    print(f"Starting Lucid Trend 20-Minute Intelligence Scheduler (Interval: {INTERVAL_MINUTES}m)")
     print("=" * 65)
 
     cycle_count = 1
