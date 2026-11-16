@@ -10,6 +10,7 @@ from service.tursodb.client import TursoDBService
 from service.shorts.insert_shorts import insert_shorts
 from service.export.static_baker import bake_static_payloads
 from service.audio.synthesizer import synthesize_audio
+from service.data_cleaning.gemini import are_articles_semantic_duplicates
 
 NEWS_PLUK_ROOT = ROOT_DIR.parent / "news-pluk"
 
@@ -57,7 +58,6 @@ def extract_concise_description(summary: str, max_sentence_len: int = 125) -> st
     clean_sentences = []
     for s in raw_sentences:
         s = re.sub(r"^[•\s\-\*]+", "", s).strip()
-        # If sentence is excessively long, split at natural conjunction/subordinate clause
         if len(s) > max_sentence_len:
             clause_match = re.search(r"^(.*?)(?:,\s*(?:while|as|amid|with|led by|including)\b)", s, re.IGNORECASE)
             if clause_match and len(clause_match.group(1)) >= 35:
@@ -106,31 +106,68 @@ def build_longform_multinews_content(headline: str, summary: str, news_items: Li
     Constructs an authoritative Stratechery / Stripe Press style monograph.
     No source at the bottom (Source is stored cleanly in the database column).
     """
-    # Opening thesis & stakes
     sections = [
         f"{summary}\n"
     ]
 
-    # Bespoke chapter subheadings with narrative prose analysis
     for idx, item in enumerate(news_items, 1):
         h = item.get("headline", "")
         pts = item.get("key_points", [])
-        
-        # Turn raw bullets into clean editorial narrative paragraphs
         clean_pts = [p.lstrip("• ").strip() for p in pts if p.strip()]
         narrative_body = " ".join(clean_pts)
-
         sections.append(f"## {h}\n{narrative_body}\n")
 
     return "\n\n".join(sections).strip()
 
 
+def _load_cached_recent_articles() -> List[Dict]:
+    """
+    Reads recently published posts from local disk (feed.json and shorts.json)
+    with ZERO database queries, causing 0 stress on Turso DB.
+    """
+    recent = []
+    candidates = [
+        NEWS_PLUK_ROOT / "public" / "api" / "feed.json",
+        ROOT_DIR / "public" / "api" / "feed.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    posts = data.get("posts", [])
+                    if posts:
+                        recent.extend(posts[:30])
+                        break
+            except Exception:
+                pass
+
+    shorts_candidates = [
+        NEWS_PLUK_ROOT / "public" / "api" / "shorts.json",
+        ROOT_DIR / "public" / "api" / "shorts.json",
+    ]
+    for p in shorts_candidates:
+        if p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    shorts = data.get("shorts", [])
+                    if shorts:
+                        recent.extend(shorts[:30])
+                        break
+            except Exception:
+                pass
+
+    return recent
+
+
 def dispatch_synthesized_news(payload: Dict) -> bool:
     """
-    1. Publishes 1 comprehensive multi-news dispatch into 'posts' (all 14 columns 100% filled).
-    2. Publishes dedicated vertical cards into 'shorts' (facts + story snippets).
-    3. Copies lead image to CDN assets.
-    4. Triggers static edge baking for feed.json, shorts.json, and posts/{id}.json.
+    Dispatches news with in-memory zero-DB deduplication:
+    1. Compares each candidate news item against cached recent articles.
+    2. Filters out duplicates; keeps ONLY genuinely unique items.
+    3. If zero items are unique, skips DB writes cleanly (0 DB stress).
+    4. Only writes and bakes if at least 1 unique item exists.
     """
     headline = payload.get("headline", "")
     executive_summary = payload.get("executive_summary", "")
@@ -141,32 +178,59 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         print("[Dispatcher] Missing headline or news items.")
         return False
 
+    # 1. Zero-DB Read: Load existing recent articles from local JSON cache
+    cached_recent = _load_cached_recent_articles()
+
+    # 2. Filter news items: Keep ONLY unique items, drop duplicates
+    unique_news_items = []
+    for item in news_items:
+        item_title = item.get("headline", "").strip()
+        item_desc = " ".join(item.get("facts", []) or item.get("key_points", []))
+        candidate_doc = {"title": item_title, "description": item_desc}
+
+        is_dup = False
+        for seen in cached_recent:
+            seen_doc = {"title": seen.get("title", ""), "description": seen.get("description", "")}
+            if are_articles_semantic_duplicates(candidate_doc, seen_doc):
+                is_dup = True
+                print(f"[Deduplication] Dropping duplicate item: '{item_title}' (matches '{seen.get('title')}')")
+                break
+
+        if not is_dup:
+            unique_news_items.append(item)
+
+    print(f"[Deduplication] Evaluated {len(news_items)} item(s) -> {len(unique_news_items)} unique item(s) remaining.")
+
+    # 3. If NO unique items exist, abort early without touching the database!
+    if not unique_news_items:
+        print("[Dispatcher] Zero unique items in this cycle. Skipping database write and CDN deploy cleanly.")
+        return False
+
     turso = TursoDBService()
     now_iso = datetime.now(timezone.utc).isoformat()
     lead_temp_image = TEMP_DIR / "lead_editorial.jpg"
 
-    # Determine author rotation
+    # Determine author rotation from local cache
     author_idx = 0
-    recent = turso.fetch_recent_posts_for_export(limit=5)
-    if recent:
-        last_auth = recent[0].get("author", {})
+    if cached_recent:
+        last_auth = cached_recent[0].get("author", {})
         last_name = last_auth.get("name") if isinstance(last_auth, dict) else str(last_auth)
         if "Anamol" in last_name:
             author_idx = 1
     assigned_author = AUTHORS[author_idx]
 
-    # --- 1. COMPREHENSIVE MULTI-NEWS POST (Table: posts) ---
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     clean_slug = slugify(headline)
     post_id = f"macro-dispatch-{date_str}-{clean_slug[:45]}"
     target_img_name = f"{post_id}.jpg"
     image_web_path = f"/images/{target_img_name}"
 
+    dest_roots = [ROOT_DIR]
+    if NEWS_PLUK_ROOT.exists():
+        dest_roots.append(NEWS_PLUK_ROOT)
+
     # Copy lead image to public CDN images
     if lead_temp_image.exists():
-        dest_roots = [ROOT_DIR]
-        if NEWS_PLUK_ROOT.exists():
-            dest_roots.append(NEWS_PLUK_ROOT)
         for dest_root in dest_roots:
             img_dest = dest_root / "public" / "images"
             img_dest.mkdir(parents=True, exist_ok=True)
@@ -176,9 +240,9 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
                 pass
 
     concise_desc = extract_concise_description(executive_summary)
-    full_content = build_longform_multinews_content(headline, executive_summary, news_items)
+    full_content = build_longform_multinews_content(headline, executive_summary, unique_news_items)
     image_prompt = build_breaking_news_image_prompt(headline)
-    categories = map_to_approved_categories(news_items)
+    categories = map_to_approved_categories(unique_news_items)
 
     post_doc = {
         "id": post_id,
@@ -196,26 +260,28 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         "audio_url": f"/audio/{post_id}.m4a",
     }
 
-    print(f"\n[Dispatcher] Storing unified multi-news article in 'posts' table (ID: {post_id})...")
-    turso.insert_documents([post_doc])
+    # Only write full post to DB if post headline is unique
+    post_is_dup = any(
+        are_articles_semantic_duplicates({"title": headline, "description": concise_desc}, {"title": s.get("title", ""), "description": s.get("description", "")})
+        for s in cached_recent
+    )
 
-    # Synthesize neural voice briefing for the dispatch (Edge TTS)
-    print(f"[Dispatcher] Generating neural audio narration for '{post_id}'...")
-    try:
-        audio_res = synthesize_audio(post_id, headline, full_content)
-        if audio_res:
-            print(f"[Dispatcher] Audio briefing generated successfully: {audio_res}")
-    except Exception as e:
-        print(f"[Dispatcher] Audio generation notice: {e}")
+    if not post_is_dup:
+        print(f"\n[Dispatcher] Storing unified multi-news article in 'posts' table (ID: {post_id})...")
+        turso.insert_documents([post_doc])
+        print(f"[Dispatcher] Generating neural audio narration for '{post_id}'...")
+        try:
+            audio_res = synthesize_audio(post_id, headline, full_content)
+            if audio_res:
+                print(f"[Dispatcher] Audio briefing generated successfully: {audio_res}")
+        except Exception as e:
+            print(f"[Dispatcher] Audio generation notice: {e}")
+    else:
+        print(f"[Dispatcher] Main headline already published previously. Skipping post insert to prevent feed clutter.")
 
-    # --- 2. DEDICATED SHORT-FORM CARDS (Table: shorts) ---
-    # Create multiple focused vertical Short cards: one for each specific news item
-    dest_roots = [ROOT_DIR]
-    if NEWS_PLUK_ROOT.exists():
-        dest_roots.append(NEWS_PLUK_ROOT)
-
+    # --- DEDICATED SHORT-FORM CARDS FOR UNIQUE ITEMS ONLY ---
     shorts_docs = []
-    for idx, item in enumerate(news_items, 1):
+    for idx, item in enumerate(unique_news_items, 1):
         item_headline = item.get("headline", "").strip()
         if not item_headline:
             continue
@@ -224,7 +290,6 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         item_img_name = f"{item_short_id}.jpg"
         item_img_path = f"/images/{item_img_name}"
 
-        # Copy image asset for each short card
         if lead_temp_image.exists():
             for dest_root in dest_roots:
                 img_dest = dest_root / "public" / "images"
@@ -234,10 +299,8 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
                 except Exception:
                     pass
 
-        # Story-specific facts: prefer facts defined directly on the news item, fallback to top-level facts
         item_facts = item.get("facts") or []
         if not item_facts:
-            # Pick facts that mention keywords from this story, or take slice
             kw = set(item_headline.lower().split())
             matched = [f for f in facts if any(w in f.lower() for w in kw if len(w) > 4)]
             item_facts = matched if matched else (item.get("key_points") or facts[:3])
@@ -256,7 +319,7 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         })
 
     if shorts_docs:
-        print(f"[Dispatcher] Storing {len(shorts_docs)} dedicated short cards in 'shorts' table...")
+        print(f"[Dispatcher] Storing {len(shorts_docs)} unique dedicated short card(s) in 'shorts' table...")
         insert_shorts(shorts_docs)
 
     print("[Dispatcher] Baking static edge payloads (feed.json, shorts.json, posts/*.json)...")
