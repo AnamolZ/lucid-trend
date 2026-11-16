@@ -208,35 +208,56 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
     except Exception as e:
         print(f"[Dispatcher] Audio generation notice: {e}")
 
-    # --- 2. DEDICATED SHORT-FORM CARD (Table: shorts) ---
-    short_id = f"short-{date_str}-{clean_slug[:45]}"
-    short_img_name = f"{short_id}.jpg"
-    short_img_path = f"/images/{short_img_name}"
+    # --- 2. DEDICATED SHORT-FORM CARDS (Table: shorts) ---
+    # Create multiple focused vertical Short cards: one for each specific news item
+    dest_roots = [ROOT_DIR]
+    if NEWS_PLUK_ROOT.exists():
+        dest_roots.append(NEWS_PLUK_ROOT)
 
-    if lead_temp_image.exists():
-        dest_roots = [ROOT_DIR]
-        if NEWS_PLUK_ROOT.exists():
-            dest_roots.append(NEWS_PLUK_ROOT)
-        for dest_root in dest_roots:
-            img_dest = dest_root / "public" / "images"
-            img_dest.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.copy2(lead_temp_image, img_dest / short_img_name)
-            except Exception:
-                pass
+    shorts_docs = []
+    for idx, item in enumerate(news_items, 1):
+        item_headline = item.get("headline", "").strip()
+        if not item_headline:
+            continue
+        item_slug = slugify(item_headline)
+        item_short_id = f"short-{date_str}-{item_slug[:40]}-{idx}"
+        item_img_name = f"{item_short_id}.jpg"
+        item_img_path = f"/images/{item_img_name}"
 
-    shorts_doc = {
-        "id": short_id,
-        "title": headline,
-        "facts": facts,
-        "news_items": news_items,
-        "image": short_img_path,
-        "category": ["Breaking News", "Shorts"],
-        "published_at": now_iso,
-    }
+        # Copy image asset for each short card
+        if lead_temp_image.exists():
+            for dest_root in dest_roots:
+                img_dest = dest_root / "public" / "images"
+                img_dest.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(lead_temp_image, img_dest / item_img_name)
+                except Exception:
+                    pass
 
-    print(f"[Dispatcher] Storing dedicated short card in 'shorts' table (ID: {short_id})...")
-    insert_shorts([shorts_doc])
+        # Story-specific facts: prefer facts defined directly on the news item, fallback to top-level facts
+        item_facts = item.get("facts") or []
+        if not item_facts:
+            # Pick facts that mention keywords from this story, or take slice
+            kw = set(item_headline.lower().split())
+            matched = [f for f in facts if any(w in f.lower() for w in kw if len(w) > 4)]
+            item_facts = matched if matched else (item.get("key_points") or facts[:3])
+
+        clean_item_facts = [f for f in item_facts if f and f.strip()][:3]
+        item_cat = [item.get("category", "Shorts"), "Shorts"]
+
+        shorts_docs.append({
+            "id": item_short_id,
+            "title": item_headline,
+            "facts": clean_item_facts,
+            "news_items": [item],
+            "image": item_img_path,
+            "category": item_cat,
+            "published_at": now_iso,
+        })
+
+    if shorts_docs:
+        print(f"[Dispatcher] Storing {len(shorts_docs)} dedicated short cards in 'shorts' table...")
+        insert_shorts(shorts_docs)
 
     print("[Dispatcher] Baking static edge payloads (feed.json, shorts.json, posts/*.json)...")
     bake_res = bake_static_payloads()

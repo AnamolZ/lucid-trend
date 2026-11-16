@@ -29,11 +29,12 @@ Strict Editorial Rules:
 2. If an item contains a factual event, financial statistic, or regulatory action, extract ONLY that hard fact.
 3. Group distinct events into separate news items inside "news_items".
 4. Top-level "headline" and "executive_summary" must synthesize the major macroeconomic/market narrative tying the key stories together.
-5. Top-level "facts" must be an array of pure, high-impact quantifiable bullet points (each starting with "• ") capturing the key verifiable metrics, statistics, and figures across the news.
+5. Top-level "facts" must be an array of pure, high-impact quantifiable bullet points (each starting with "• ") capturing the key verifiable metrics across the news.
 6. For EACH news item in "news_items":
    - "headline": Punchy, professional news headline for that specific story.
    - "category": Clean category (e.g., "Tech & Equities", "Cryptocurrency", "Macro & Infrastructure").
-   - "key_points": Cohesive, narrative context explaining what happened, historical context, and impacts (each starting with "• ").
+   - "facts": Array of 2-3 quantifiable, story-specific facts or metrics (each starting with "• ") relevant specifically to this story (e.g. percentages, prices, funding, record stats). Do NOT include generic headers or fluff.
+   - "key_points": Cohesive, narrative context explaining what happened (each starting with "• ").
 
 Output Format:
 You MUST respond with a strictly valid JSON object matching this schema exactly (no markdown codeblocks, no commentary, no extra top-level keys):
@@ -48,6 +49,10 @@ You MUST respond with a strictly valid JSON object matching this schema exactly 
     {{
       "headline": "Individual story headline",
       "category": "Tech & Equities",
+      "facts": [
+        "• Specific number or metric for this story.",
+        "• Hard financial stat or milestone for this story."
+      ],
       "key_points": [
         "• Narrative bullet 1 explaining what occurred.",
         "• Narrative bullet 2 providing context and follow-up."
