@@ -72,9 +72,23 @@ def run_pipeline() -> None:
         print("[!] Synthesis failed.")
         return
 
+    # Strategy D: Smart Significance Gate (Scale 1 to 10)
+    # Saves compute, database stress, and git bloat by skipping low-impact cycles (< 7/10)
+    score = data.get("significance_score", 7)
+    try:
+        score = int(score)
+    except (ValueError, TypeError):
+        score = 7
+
+    print(f"\n[Significance Gate] Market Impact Score: {score}/10")
+    if score < 7:
+        print(f"[Significance Gate] Score {score}/10 is below threshold (7/10). Skipping publication to conserve AI quota & compute.")
+        return
+
     final_payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "headline": data.get("headline", ""),
+        "significance_score": score,
         "executive_summary": data.get("executive_summary", ""),
         "facts": data.get("facts") or data.get("quick_facts") or [],
         "news_items": data.get("news_items", []),

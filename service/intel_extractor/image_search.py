@@ -10,7 +10,8 @@ from PIL import Image
 from duckduckgo_search import DDGS
 
 from config.settings import TEMP_DIR, HTTP_HEADERS
-from service.image_helper.get_image import CloudflareAccountCoordinator, build_grounded_flux_prompt
+from service.image_helper.get_image import CloudflareAccountCoordinator, build_grounded_flux_prompt, generate_pollinations_image
+from service.intel_extractor.image_verifier import verify_image_relevance
 
 
 def search_and_download_image(query: str, filename_prefix: str = "lead_thumbnail") -> Optional[Path]:
@@ -89,9 +90,11 @@ def search_wikimedia_image(query: str, filename_prefix: str = "lead_thumbnail") 
 
 
 def generate_high_quality_flux_image(title: str, description: str = "", filename_prefix: str = "lead_thumbnail") -> Optional[Path]:
+    prompt = build_grounded_flux_prompt(title=title, description=description)
+
+    # 1. Try Cloudflare Workers AI FLUX first
     try:
         print(f"[Image] Generating grounded Cloudflare FLUX image for: '{title}'...")
-        prompt = build_grounded_flux_prompt(title=title, description=description)
         coordinator = CloudflareAccountCoordinator()
         img_b64 = coordinator.generate_image(prompt)
 
@@ -104,24 +107,62 @@ def generate_high_quality_flux_image(title: str, description: str = "", filename
             save_path = TEMP_DIR / f"{filename_prefix}.jpg"
             with open(save_path, "wb") as f:
                 f.write(img_bytes)
-            print(f"[Image] High-quality FLUX image saved to: {save_path}")
+            print(f"[Image] High-quality Cloudflare FLUX image saved to: {save_path}")
             return save_path
     except Exception as e:
-        print(f"[Image] FLUX generation error: {e}")
+        print(f"[Image] Cloudflare FLUX generation error: {e}")
+
+    # 2. Infinite Free Fallback: Pollinations.ai FLUX (guarantees zero-cost, no quota block)
+    try:
+        print(f"[Image] Cloudflare busy or throttled. Engaging infinite Pollinations FLUX for: '{title}'...")
+        img_b64 = generate_pollinations_image(prompt)
+        if img_b64:
+            if "," in img_b64:
+                img_b64 = img_b64.split(",", 1)[1]
+
+            import base64
+            img_bytes = base64.b64decode(img_b64)
+            save_path = TEMP_DIR / f"{filename_prefix}.jpg"
+            with open(save_path, "wb") as f:
+                f.write(img_bytes)
+            print(f"[Image] High-quality Pollinations FLUX image saved to: {save_path}")
+            return save_path
+    except Exception as e:
+        print(f"[Image] Pollinations FLUX fallback error: {e}")
 
     return None
 
 
 def acquire_editorial_thumbnail(headline: str, summary: str = "", post_id: str = "lead_thumbnail") -> Optional[Path]:
-    # 1. DuckDuckGo Image Search
+    """
+    Acquires an editorial thumbnail with strict context verification:
+    1. Search DuckDuckGo press images -> Verify with Gemini Vision
+    2. Search Wikimedia Commons -> Verify with Gemini Vision
+    3. Generate photorealistic FLUX image (Cloudflare -> Pollinations)
+    """
+    # 1. DuckDuckGo Image Search + Gemini Vision Guard
     saved = search_and_download_image(headline, filename_prefix=post_id)
     if saved and saved.exists():
-        return saved
+        if verify_image_relevance(saved, topic=headline, headline=headline):
+            return saved
+        else:
+            print(f"[Image] Discarding DuckDuckGo photo (failed vision relevance check).")
+            try:
+                saved.unlink()
+            except Exception:
+                pass
 
-    # 2. Wikimedia Commons
+    # 2. Wikimedia Commons + Gemini Vision Guard
     wiki = search_wikimedia_image(headline, filename_prefix=post_id)
     if wiki and wiki.exists():
-        return wiki
+        if verify_image_relevance(wiki, topic=headline, headline=headline):
+            return wiki
+        else:
+            print(f"[Image] Discarding Wikimedia photo (failed vision relevance check).")
+            try:
+                wiki.unlink()
+            except Exception:
+                pass
 
-    # 3. Cloudflare FLUX fallback
+    # 3. Grounded FLUX AI Image (Cloudflare -> Pollinations infinite free fallback)
     return generate_high_quality_flux_image(headline, description=summary, filename_prefix=post_id)

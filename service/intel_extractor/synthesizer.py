@@ -35,11 +35,15 @@ Strict Editorial Rules:
    - "category": Clean category (e.g., "Tech & Equities", "Cryptocurrency", "Macro & Infrastructure").
    - "facts": Array of 2-3 quantifiable, story-specific facts or metrics (each starting with "• ") relevant specifically to this story (e.g. percentages, prices, funding, record stats). Do NOT include generic headers or fluff.
    - "key_points": Cohesive, narrative context explaining what happened (each starting with "• ").
+7. Top-level "significance_score": An integer from 1 to 10 rating the market and historical importance of this batch:
+   - 1-6: Minor market noise, routine price twitches (<1.5%), social media banter, or repetitive updates.
+   - 7-10: Major market developments, monetary policy decisions, severe liquidations (>3%), breakthrough tech, or geopolitical actions.
 
 Output Format:
 You MUST respond with a strictly valid JSON object matching this schema exactly (no markdown codeblocks, no commentary, no extra top-level keys):
 {{
   "headline": "Main multi-market headline summarizing key developments",
+  "significance_score": 8,
   "executive_summary": "Synthesized executive paragraph detailing major stories and market context...",
   "facts": [
     "• Hard quantifiable stat or record metric.",
@@ -85,22 +89,24 @@ You MUST respond with a strictly valid JSON object matching this schema exactly 
 
         # 2. Resilient Strategy: Google Gemini Key Pool (High speed, Free, Structured Output)
         try:
-            from config.model_pool import gemini_pool
-            for model_name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
-                client = gemini_pool.get_client()
-                if client:
+            import google.generativeai as genai
+            from config.model_pool import coordinator
+
+            active_key = coordinator.get_active_key()
+            if active_key:
+                genai.configure(api_key=active_key)
+                for model_name in ["models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash"]:
                     try:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                        )
+                        g_model = genai.GenerativeModel(model_name)
+                        response = g_model.generate_content(prompt)
                         if response and response.text:
                             parsed = self._clean_and_parse_json(response.text)
                             if parsed and parsed.get("headline"):
                                 print(f"[NewsSynthesizer] Successfully synthesized news via Google Gemini ({model_name})!")
                                 return parsed
                     except Exception as gem_err:
-                        logger.warning(f"[NewsSynthesizer] Gemini model {model_name} attempt failed: {gem_err}")
+                        logger.warning(f"[NewsSynthesizer] Gemini model {model_name} attempt error: {gem_err}")
+                        coordinator.advance_key_round_robin()
                         continue
         except Exception as e:
             logger.warning(f"[NewsSynthesizer] Gemini Pool unavailable: {e}")
