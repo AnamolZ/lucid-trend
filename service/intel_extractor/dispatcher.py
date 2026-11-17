@@ -354,9 +354,24 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         for s in cached_recent
     )
 
+    receipt_file = TEMP_DIR / "new_post_receipt.json"
+    if receipt_file.exists():
+        try:
+            receipt_file.unlink()
+        except Exception:
+            pass
+
     if not post_is_dup:
         print(f"\n[Dispatcher] Storing unified multi-news article in 'posts' table (ID: {post_id})...")
         turso.insert_documents([post_doc])
+        # Record one-time notification receipt strictly for genuinely new articles
+        try:
+            TEMP_DIR.mkdir(parents=True, exist_ok=True)
+            with open(receipt_file, "w", encoding="utf-8") as rf:
+                json.dump({"post_id": post_id, "title": headline, "description": concise_desc}, rf)
+        except Exception as r_err:
+            print(f"[Dispatcher] Receipt write warning: {r_err}")
+
         print(f"[Dispatcher] Generating neural audio narration for '{post_id}'...")
         try:
             audio_res = synthesize_audio(post_id, headline, full_content)
@@ -365,7 +380,7 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
         except Exception as e:
             print(f"[Dispatcher] Audio generation notice: {e}")
     else:
-        print(f"[Dispatcher] Main headline already published previously. Skipping post insert to prevent feed clutter.")
+        print(f"[Dispatcher] Main headline already published previously. Skipping post insert and push receipt.")
 
     # --- DEDICATED SHORT-FORM CARDS FOR UNIQUE ITEMS ONLY ---
     shorts_docs = []

@@ -121,47 +121,139 @@ STOPWORDS = {
     'first', 'ahead', 'leaps', 'near', 'nears', 'threatens', 'disrupts', 'pushes', 'marks'
 }
 
+FINANCIAL_SYNONYMS = {
+    'fed': 'federal reserve',
+    'feds': 'federal reserve',
+    'powell': 'federal reserve',
+    'cryptocurrency': 'crypto',
+    'cryptos': 'crypto',
+    'lawsuits': 'lawsuit',
+    'suing': 'lawsuit',
+    'sues': 'lawsuit',
+    'sued': 'lawsuit',
+    'regulators': 'regulation',
+    'regulatory': 'regulation',
+    'plunges': 'drop',
+    'plunge': 'drop',
+    'slips': 'drop',
+    'slip': 'drop',
+    'erases': 'drop',
+    'erase': 'drop',
+    'wipes': 'drop',
+    'wipeout': 'drop',
+    'sheds': 'drop',
+    'shed': 'drop',
+    'plummet': 'drop',
+    'plummeting': 'drop',
+    'rout': 'downturn',
+    'selloff': 'downturn',
+    'sell-off': 'downturn',
+    'slump': 'downturn',
+    'halts': 'halt',
+    'pauses': 'halt',
+    'pause': 'halt',
+    'halted': 'halt',
+}
+
+KNOWN_ENTITIES = {
+    # Jurisdictions & Countries
+    'armenia', 'canada', 'south africa', 'us', 'usa', 'united states', 'uk', 'britain',
+    'germany', 'china', 'japan', 'france', 'europe', 'eu', 'silicon valley',
+    # Key Technology & Financial Institutions
+    'nvidia', 'apple', 'google', 'microsoft', 'anthropic', 'openai', 'spacex', 'tesla',
+    'deutsche bank', 'federal reserve', 'sec', 'binance', 'coinbase', 'ftx',
+    # Key Figures
+    'jensen huang', 'ramaphosa', 'elon musk', 'cathie wood', 'bengio', 'hinton', 'altman',
+    # Asset Classes & Financial Instruments
+    'bitcoin', 'ethereum', 'solana', 'xrp', 'bnb', 'treasury', 'bunds', 'yields', 'etf'
+}
+
+
+def extract_quant_metrics(text: str) -> set:
+    """Extracts normalized quantifiable financial figures, percentages, and metrics."""
+    words = (text or '').lower().replace('$', ' ').replace('€', ' ').replace('£', ' ').replace(',', '').split()
+    metrics = set()
+    for i, w in enumerate(words):
+        digits = ''.join(c for c in w if c.isdigit() or c == '.')
+        if digits and digits != '.':
+            mag = ''
+            if i + 1 < len(words) and words[i + 1] in ['billion', 'million', 'trillion', 'percent', '%', 'k', 'm', 'b']:
+                mag = words[i + 1]
+            metrics.add(f"{digits}_{mag}")
+    return metrics
+
 
 def extract_semantic_features(title: str, description: str = ""):
-    """Extracts normalized tokens, technical version signatures, and descriptive vocabulary."""
-    raw_tokens = re.findall(r'[a-zA-Z0-9\.]+', (title or '').lower())
-    clean_tokens = {re.sub(r'^\.+|\.+$', '', t) for t in raw_tokens}
-    clean_tokens = {t for t in clean_tokens if len(t) >= 2 and t not in STOPWORDS}
+    """Extracts normalized tokens, technical version signatures, entities, and quant metrics."""
+    raw_text = f"{title or ''} {description or ''}".lower()
+    for word, rep in FINANCIAL_SYNONYMS.items():
+        raw_text = re.sub(rf"\b{re.escape(word)}\b", rep, raw_text)
+
+    # Detect recognized entities
+    entities = {ent for ent in KNOWN_ENTITIES if re.search(rf"\b{re.escape(ent)}\b", raw_text)}
+
+    # Extract clean tokens
+    tokens = {t for t in re.findall(r'[a-zA-Z0-9\.]+', raw_text) if len(t) >= 2 and t not in STOPWORDS}
+    title_tokens = {t for t in re.findall(r'[a-zA-Z0-9]+', (title or '').lower()) if len(t) >= 2 and t not in STOPWORDS}
     versions = set(re.findall(r'\b\d+\.\d+\b', title or ''))
-    desc_tokens = {t for t in re.findall(r'[a-zA-Z0-9]+', (description or '').lower()) if len(t) >= 3 and t not in STOPWORDS}
-    return clean_tokens, versions, desc_tokens
+    metrics = extract_quant_metrics(f"{title or ''} {description or ''}")
+
+    return tokens, title_tokens, versions, entities, metrics
 
 
 def are_articles_semantic_duplicates(doc_a: dict, doc_b: dict) -> bool:
-    """Evaluates whether two article documents report on the exact same real-world event/breakthrough."""
+    """
+    Evaluates whether two article documents report on the exact same real-world event/breakthrough.
+    Operates 100% locally with zero external API calls:
+    1. Entity Disambiguation: Protects separate stories on the same general topic.
+    2. Metric Fingerprinting: Catches identical financial/record events described with different words.
+    3. Lexical & Jaccard Overlap: Flags semantic duplicates via synonym normalization.
+    """
     title_a = (doc_a.get("title") or "").strip()
     title_b = (doc_b.get("title") or "").strip()
     if not title_a or not title_b:
         return False
 
-    tokens_a, vers_a, desc_a = extract_semantic_features(title_a, doc_a.get("description", ""))
-    tokens_b, vers_b, desc_b = extract_semantic_features(title_b, doc_b.get("description", ""))
+    tok_a, tit_a, vers_a, ent_a, met_a = extract_semantic_features(title_a, doc_a.get("description", ""))
+    tok_b, tit_b, vers_b, ent_b, met_b = extract_semantic_features(title_b, doc_b.get("description", ""))
 
-    # Guard: Distinct version numbers indicate different updates/releases (e.g. 3.5 vs 3.7)
+    # Guard 1: Distinct software/hardware versions represent distinct events (e.g. 3.5 vs 3.7)
     if vers_a and vers_b and not (vers_a & vers_b):
         return False
 
-    inter = tokens_a & tokens_b
-    shorter = min(len(tokens_a), len(tokens_b))
+    # Guard 2: Entity Disambiguation - If both articles mention distinct primary entities, they are UNIQUE!
+    # (e.g. Armenia AI vs Canada AI -> Different primary entities -> Never duplicate)
+    if ent_a and ent_b and not (ent_a & ent_b):
+        return False
+
+    # Detection 1: Quantitative Metric Fingerprinting
+    # If both stories share the exact same financial metric ($230B, €19B, 22%) and topic
+    shared_metrics = {m for m in (met_a & met_b) if any(x in m for x in ['billion', 'million', 'trillion', '%', 'percent'])}
+    if shared_metrics and (tok_a & tok_b):
+        return True
+
+    # Detection 2: Same primary entity + same numerical metric
+    if (ent_a & ent_b) and (met_a & met_b):
+        return True
+
+    # Detection 3: Title Token Jaccard & Overlap
+    tit_inter = tit_a & tit_b
+    shorter_tit = min(len(tit_a), len(tit_b)) if (tit_a and tit_b) else 0
+    if shorter_tit > 0:
+        tit_overlap = len(tit_inter) / shorter_tit
+        if tit_overlap >= 0.45 and len(tit_inter) >= 2:
+            return True
+
+    # Detection 4: Overall Content Token Overlap
+    inter = tok_a & tok_b
+    shorter = min(len(tok_a), len(tok_b)) if (tok_a and tok_b) else 0
     overlap = len(inter) / shorter if shorter > 0 else 0
-    jaccard = len(inter) / len(tokens_a | tokens_b) if (tokens_a | tokens_b) else 0
+    jaccard = len(inter) / len(tok_a | tok_b) if (tok_a | tok_b) else 0
 
-    desc_inter = desc_a & desc_b
-    desc_overlap = len(desc_inter) / min(len(desc_a), len(desc_b)) if (desc_a and desc_b) else 0
+    if overlap >= 0.52 or jaccard >= 0.38 or (overlap >= 0.36 and len(inter) >= 4 and (ent_a & ent_b)):
+        return True
 
-    # Robust generalized semantic deduplication based on lexical overlap and Jaccard similarity
-    is_duplicate = (
-        overlap >= 0.55 or
-        jaccard >= 0.40 or
-        (overlap >= 0.38 and len(inter) >= 3 and desc_overlap >= 0.20)
-    )
-
-    return is_duplicate
+    return False
 
 
 def local_detect_duplicates(posts: list, model=None, similarity_threshold: float = 0.75) -> list:

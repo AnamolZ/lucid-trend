@@ -8,6 +8,7 @@ import logging
 import urllib.request
 import urllib.error
 from dotenv import load_dotenv
+from config.settings import TEMP_DIR
 
 load_dotenv()
 
@@ -262,21 +263,45 @@ def send_article_push(article: dict) -> bool:
     return send_push_notification(title=title, body=description, post_id=post_id, extra_data=extra_data)
 
 
-def send_latest_dispatches_push(limit: int = 2) -> int:
-    """Fetches the most recently inserted Turso dispatches and broadcasts rich notifications."""
+def send_new_dispatch_receipt_push() -> int:
+    """
+    Broadcasts push notification ONLY if a genuinely new article was inserted
+    during the current cycle (verified via temp/new_post_receipt.json).
+    Prevents repeated / duplicate push notifications completely.
+    """
+    receipt_file = TEMP_DIR / "new_post_receipt.json"
+    if not receipt_file.exists():
+        logging.info("[PushService] No new_post_receipt.json found. No new unique article inserted in this cycle. Skipping push.")
+        return 0
+
     try:
+        with open(receipt_file, "r", encoding="utf-8") as rf:
+            data = json.load(rf)
+        post_id = data.get("post_id")
+        if not post_id:
+            return 0
+
         from service.tursodb.client import TursoDBService
         turso = TursoDBService()
-        posts = turso.fetch_recent_posts_for_export(limit=limit)
-        if not posts:
-            logging.warning("[PushService] No recent posts found to notify.")
+        posts = turso.fetch_recent_posts_for_export(limit=5)
+        matching = next((p for p in posts if p.get("id") == post_id), None)
+        if matching:
+            ok = send_article_push(matching)
+            # Remove receipt after successful broadcast
+            try:
+                receipt_file.unlink()
+            except Exception:
+                pass
+            logging.info(f"[PushService] Broadcasted push for genuine new post '{post_id}'. Success={ok}")
+            return 1 if ok else 0
+        else:
+            logging.warning(f"[PushService] Receipt post_id '{post_id}' not found in Turso recent posts.")
             return 0
-        count = 0
-        for p in posts:
-            if send_article_push(p):
-                count += 1
-        logging.info(f"[PushService] Broadcasted push for {count}/{len(posts)} recent dispatches.")
-        return count
     except Exception as e:
-        logging.error(f"[PushService] Error broadcasting latest dispatches: {e}")
+        logging.error(f"[PushService] Error broadcasting new dispatch receipt push: {e}")
         return 0
+
+
+def send_latest_dispatches_push(limit: int = 2) -> int:
+    """Fallback: Broadcasts push notification strictly if new receipt exists or explicitly called."""
+    return send_new_dispatch_receipt_push()
