@@ -81,9 +81,31 @@ You MUST respond with a strictly valid JSON object matching this schema exactly 
                     if parsed:
                         return parsed
             except Exception as e:
-                logger.warning(f"[NewsSynthesizer] OpenRouter attempt failed: {e}. Falling back to Cloudflare AI...")
+                logger.warning(f"[NewsSynthesizer] OpenRouter attempt failed: {e}. Falling back...")
 
-        # 2. Resilient Fallback: Cloudflare Workers AI Account Pool (Zero API cost, High Reliability)
+        # 2. Resilient Strategy: Google Gemini Key Pool (High speed, Free, Structured Output)
+        try:
+            from config.model_pool import gemini_pool
+            for model_name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
+                client = gemini_pool.get_client()
+                if client:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                        )
+                        if response and response.text:
+                            parsed = self._clean_and_parse_json(response.text)
+                            if parsed and parsed.get("headline"):
+                                print(f"[NewsSynthesizer] Successfully synthesized news via Google Gemini ({model_name})!")
+                                return parsed
+                    except Exception as gem_err:
+                        logger.warning(f"[NewsSynthesizer] Gemini model {model_name} attempt failed: {gem_err}")
+                        continue
+        except Exception as e:
+            logger.warning(f"[NewsSynthesizer] Gemini Pool unavailable: {e}")
+
+        # 3. Fallback Strategy: Cloudflare Workers AI Account Pool (Zero API cost, High Reliability)
         cf_accounts = self.cf_coordinator.get_accounts()
         if cf_accounts:
             models_to_try = [
