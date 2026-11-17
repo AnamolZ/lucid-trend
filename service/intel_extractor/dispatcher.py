@@ -101,10 +101,83 @@ def map_to_approved_categories(news_items: List[Dict]) -> List[str]:
     return [c for c in cats if c in APPROVED_CATEGORIES][:3]
 
 
+def expand_story_in_depth(headline: str, key_points: List[str], summary: str = "") -> str:
+    """
+    Leverages Google Gemini key pool (or Cloudflare text model fallback)
+    to write an in-depth, multi-paragraph authoritative analysis in Bloomberg/FT style.
+    """
+    raw_body = " ".join([p.lstrip("• ").strip() for p in key_points if p.strip()])
+    prompt = f"""You are a senior financial and technology news correspondent for NewsPluk.
+Article Headline: {headline}
+Context/Key Facts: {raw_body}
+Broader Executive Context: {summary}
+
+Write an authoritative, rigorous, 2-3 paragraph longform journalistic analysis of this story.
+Requirements:
+1. Explain the immediate event, macroeconomic implications, strategic capital allocation, and industry impact.
+2. Incorporate structural market realities (regulatory tension, compute bottlenecks, supply chain dynamics, or geopolitical stakes).
+3. Do NOT use emojis, buzzwords, or conversational filler. Write with analytical depth like The Financial Times or Stratechery.
+4. Output strictly the multi-paragraph analysis text without markdown titles or greetings.
+"""
+
+    # 1. Try Google Gemini Pool
+    try:
+        import urllib.request
+        from config.model_pool import coordinator
+        keys = coordinator.raw_keys if hasattr(coordinator, "raw_keys") else []
+        for k in keys:
+            if not k:
+                continue
+            for model_name in ["models/gemini-flash-lite-latest", "models/gemini-flash-latest"]:
+                url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={k}"
+                payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+                req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=18) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        expanded = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                        if expanded and len(expanded) > 200:
+                            return expanded
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    # 2. Try Cloudflare Workers AI Account Pool (Fallback)
+    try:
+        from service.image_helper.get_image import CloudflareAccountCoordinator
+        import requests
+        cf_coord = CloudflareAccountCoordinator()
+        accs = cf_coord.get_accounts()
+        for aid, tok in accs:
+            url = f"https://api.cloudflare.com/client/v4/accounts/{aid}/ai/run/@cf/meta/llama-3.1-8b-instruct"
+            headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+            payload = {
+                "messages": [
+                    {"role": "system", "content": "You are a senior financial correspondent. Write rigorous, authoritative journalism."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1024
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=20)
+                if r.status_code == 200:
+                    text = r.json().get("result", {}).get("response", "").strip()
+                    if text and len(text) > 200:
+                        return text
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Fallback to original concise points if AI unavailable
+    return raw_body
+
+
 def build_longform_multinews_content(headline: str, summary: str, news_items: List[Dict]) -> str:
     """
-    Constructs an authoritative Stratechery / Stripe Press style monograph.
-    No source at the bottom (Source is stored cleanly in the database column).
+    Constructs an authoritative, comprehensive Stratechery / Stripe Press style monograph.
+    Expands each news subsection with deep analytical reporting.
     """
     sections = [
         f"{summary}\n"
@@ -112,10 +185,9 @@ def build_longform_multinews_content(headline: str, summary: str, news_items: Li
 
     for idx, item in enumerate(news_items, 1):
         h = item.get("headline", "")
-        pts = item.get("key_points", [])
-        clean_pts = [p.lstrip("• ").strip() for p in pts if p.strip()]
-        narrative_body = " ".join(clean_pts)
-        sections.append(f"## {h}\n{narrative_body}\n")
+        pts = item.get("key_points", []) or item.get("facts", [])
+        detailed_narrative = expand_story_in_depth(h, pts, summary=summary)
+        sections.append(f"## {h}\n\n{detailed_narrative}\n")
 
     return "\n\n".join(sections).strip()
 
