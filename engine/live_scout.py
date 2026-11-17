@@ -42,9 +42,13 @@ def _filter_fresh_candidates(
     return fresh
 
 def scout_category_intel(category_key: str, queries: List[str], max_items: int = 15) -> List[Dict[str, str]]:
-    """Scouts verified real-time developments from the past 24 hours for a specific category."""
+    """Scouts verified real-time developments strictly published on the CURRENT date."""
+    import email.utils
+    from datetime import datetime, timezone
+
     articles = []
     seen_titles = set()
+    today_utc = datetime.now(timezone.utc).date()
 
     for query in queries:
         encoded_q = urllib.parse.quote(query)
@@ -66,13 +70,23 @@ def scout_category_intel(category_key: str, queries: List[str], max_items: int =
                     if title_elem is None or not title_elem.text:
                         continue
 
+                    pub_date = pub_date_elem.text.strip() if pub_date_elem is not None and pub_date_elem.text else ""
+
+                    # Strict Current-Date Filter: Skip any item published on previous days
+                    if pub_date:
+                        try:
+                            dt = email.utils.parsedate_to_datetime(pub_date)
+                            if dt.date() < today_utc:
+                                continue
+                        except Exception:
+                            pass
+
                     title = title_elem.text.strip()
                     if title in seen_titles:
                         continue
                     seen_titles.add(title)
 
                     link = link_elem.text.strip() if link_elem is not None and link_elem.text else ""
-                    pub_date = pub_date_elem.text.strip() if pub_date_elem is not None and pub_date_elem.text else ""
                     desc = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ""
 
                     articles.append({

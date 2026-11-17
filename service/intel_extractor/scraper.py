@@ -52,9 +52,10 @@ def fetch_post_images(post, max_slides: int = 3) -> List[Image.Image]:
     return images
 
 
-def scrape_profile(loader: instaloader.Instaloader, username: str, max_recent: int = 2) -> List[Dict]:
+def scrape_profile(loader: instaloader.Instaloader, username: str, max_recent: int = 5) -> List[Dict]:
     """
     Anonymously extracts recent public posts/infographics from the given public profile.
+    Strictly filters for posts published on the CURRENT UTC date (never past dates).
     Completely zero login required. Never accesses restricted story endpoints.
     """
     items = []
@@ -65,12 +66,26 @@ def scrape_profile(loader: instaloader.Instaloader, username: str, max_recent: i
         return []
 
     try:
+        from datetime import datetime, timezone
+        today_utc = datetime.now(timezone.utc).date()
+
         post_iter = profile.get_posts()
         checked = 0
         for post in post_iter:
             if checked >= max_recent:
                 break
             checked += 1
+
+            # Strict Current-Date Gate: If post date is older than today, stop inspecting this feed
+            post_dt = getattr(post, "date_utc", None)
+            if post_dt:
+                post_date = post_dt.date() if hasattr(post_dt, "date") else None
+                if post_date and post_date < today_utc:
+                    # Instagram posts are chronologically descending; once we hit an older date, stop
+                    print(f"  [-] Reached previous date ({post_date} < {today_utc}) for @{username}. Stopping feed scan.")
+                    break
+                elif post_date and post_date > today_utc:
+                    continue
 
             if is_post_seen(post.shortcode):
                 continue
