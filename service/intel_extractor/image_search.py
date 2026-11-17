@@ -135,34 +135,72 @@ def generate_high_quality_flux_image(title: str, description: str = "", filename
 
 def acquire_editorial_thumbnail(headline: str, summary: str = "", post_id: str = "lead_thumbnail") -> Optional[Path]:
     """
-    Acquires an editorial thumbnail with strict context verification:
-    1. Search DuckDuckGo press images -> Verify with Gemini Vision
-    2. Search Wikimedia Commons -> Verify with Gemini Vision
-    3. Generate photorealistic FLUX image (Cloudflare -> Pollinations)
+    Acquires an editorial thumbnail strictly prioritizing Cloudflare AI across all accounts:
+    1. Primary: Cloudflare FLUX across all 4 configured accounts (Natural photojournalism prompt, no AI slop).
+    2. Fallback A: If ALL 4 Cloudflare accounts are exhausted/429 -> Free web press image search (Wikimedia / DDG) + Gemini Vision Guard.
+    3. Fallback B: If search finds no matching photo -> Pollinations.ai FLUX (zero-cost safety net).
     """
-    # 1. DuckDuckGo Image Search + Gemini Vision Guard
-    saved = search_and_download_image(headline, filename_prefix=post_id)
-    if saved and saved.exists():
-        if verify_image_relevance(saved, topic=headline, headline=headline):
-            return saved
-        else:
-            print(f"[Image] Discarding DuckDuckGo photo (failed vision relevance check).")
-            try:
-                saved.unlink()
-            except Exception:
-                pass
+    # 1. Primary: Cloudflare Workers AI FLUX (Tries all 4 accounts before anything else)
+    prompt = build_grounded_flux_prompt(title=headline, description=summary)
+    try:
+        print(f"[Image] Generating primary Cloudflare FLUX image for: '{headline}'...")
+        coordinator = CloudflareAccountCoordinator()
+        img_b64 = coordinator.generate_image(prompt)
 
-    # 2. Wikimedia Commons + Gemini Vision Guard
+        if img_b64:
+            if "," in img_b64:
+                img_b64 = img_b64.split(",", 1)[1]
+
+            import base64
+            img_bytes = base64.b64decode(img_b64)
+            save_path = TEMP_DIR / f"{post_id}.jpg"
+            with open(save_path, "wb") as f:
+                f.write(img_bytes)
+            print(f"[Image] High-quality Cloudflare FLUX image saved to: {save_path}")
+            return save_path
+    except Exception as e:
+        print(f"[Image] Cloudflare generation error across accounts: {e}")
+
+    # 2. Fallback A: Only after ALL Cloudflare accounts are exhausted, search real press images
+    print("[Image] All Cloudflare accounts exhausted. Falling back to real press image search...")
     wiki = search_wikimedia_image(headline, filename_prefix=post_id)
     if wiki and wiki.exists():
         if verify_image_relevance(wiki, topic=headline, headline=headline):
             return wiki
         else:
-            print(f"[Image] Discarding Wikimedia photo (failed vision relevance check).")
+            print(f"[Image] Discarding Wikimedia photo (failed vision check).")
             try:
                 wiki.unlink()
             except Exception:
                 pass
 
-    # 3. Grounded FLUX AI Image (Cloudflare -> Pollinations infinite free fallback)
-    return generate_high_quality_flux_image(headline, description=summary, filename_prefix=post_id)
+    saved = search_and_download_image(headline, filename_prefix=post_id)
+    if saved and saved.exists():
+        if verify_image_relevance(saved, topic=headline, headline=headline):
+            return saved
+        else:
+            print(f"[Image] Discarding web photo (failed vision check).")
+            try:
+                saved.unlink()
+            except Exception:
+                pass
+
+    # 3. Fallback B: Pollinations.ai FLUX (Infinite free safety net)
+    try:
+        print(f"[Image] Search yielded no verified photos. Engaging Pollinations FLUX safety net for: '{headline}'...")
+        img_b64 = generate_pollinations_image(prompt)
+        if img_b64:
+            if "," in img_b64:
+                img_b64 = img_b64.split(",", 1)[1]
+
+            import base64
+            img_bytes = base64.b64decode(img_b64)
+            save_path = TEMP_DIR / f"{post_id}.jpg"
+            with open(save_path, "wb") as f:
+                f.write(img_bytes)
+            print(f"[Image] High-quality Pollinations FLUX image saved to: {save_path}")
+            return save_path
+    except Exception as e:
+        print(f"[Image] Pollinations FLUX fallback error: {e}")
+
+    return None
