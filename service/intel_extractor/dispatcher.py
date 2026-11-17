@@ -229,6 +229,14 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
     if NEWS_PLUK_ROOT.exists():
         dest_roots.append(NEWS_PLUK_ROOT)
 
+    # Ensure lead image exists, or acquire it directly if missing
+    if not lead_temp_image.exists():
+        try:
+            from service.intel_extractor.image_search import acquire_editorial_thumbnail
+            acquire_editorial_thumbnail(headline, summary=executive_summary, post_id="lead_editorial")
+        except Exception as e:
+            print(f"[Dispatcher] Warning: Failed on-demand thumbnail acquisition: {e}")
+
     # Copy lead image to public CDN images
     if lead_temp_image.exists():
         for dest_root in dest_roots:
@@ -236,6 +244,14 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
             img_dest.mkdir(parents=True, exist_ok=True)
             try:
                 shutil.copy2(lead_temp_image, img_dest / target_img_name)
+                # Also generate webp companion
+                try:
+                    from PIL import Image
+                    webp_path = img_dest / f"{post_id}.webp"
+                    with Image.open(lead_temp_image) as im:
+                        im.save(webp_path, "WEBP", quality=85)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
