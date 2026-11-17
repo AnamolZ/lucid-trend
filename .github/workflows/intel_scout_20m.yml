@@ -1,9 +1,9 @@
 name: Autonomous 20-Min Social Intel & Shorts Pipeline
 
 on:
-  schedule:
-    # Trigger every 20 minutes (cron runs at :05, :25, :45 past every hour)
-    - cron: '5,25,45 * * * *'
+  # PAUSED: Cron schedule temporarily disabled until next release plan
+  # schedule:
+  #   - cron: '5,25,45 * * * *'
   workflow_dispatch:
     inputs:
       force:

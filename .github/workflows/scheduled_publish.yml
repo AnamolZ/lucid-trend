@@ -1,12 +1,10 @@
 name: Autonomous NewsPluk Publishing Engine
 
 on:
-  schedule:
-    # Autonomous 8-slot 3-hour micro-dispatch cycle (UTC: 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00)
-    # Primary trigger (:17 past every 3 hours)
-    - cron: '17 */3 * * *'
-    # Backup/Catch-up trigger (:47 past every 3 hours) to catch dropped or delayed GitHub runner queues
-    - cron: '47 */3 * * *'
+  # PAUSED: Cron schedule temporarily disabled until next release plan
+  # schedule:
+  #   - cron: '17 */3 * * *'
+  #   - cron: '47 */3 * * *'
   workflow_dispatch:
     inputs:
       category:
