@@ -92,22 +92,28 @@ You MUST respond with a strictly valid JSON object matching this schema exactly 
             import google.generativeai as genai
             from config.model_pool import coordinator
 
-            active_key = coordinator.get_active_key()
-            if active_key:
+            total_keys = len(coordinator.raw_keys) if hasattr(coordinator, "raw_keys") else 1
+            for key_round in range(max(1, total_keys)):
+                active_key = coordinator.get_active_key()
+                if not active_key:
+                    break
                 genai.configure(api_key=active_key)
-                for model_name in ["models/gemini-flash-latest", "models/gemini-flash-lite-latest", "models/gemini-2.5-flash"]:
+
+                for model_name in ["models/gemini-flash-lite-latest", "models/gemini-flash-latest", "models/gemini-2.5-flash"]:
                     try:
                         g_model = genai.GenerativeModel(model_name)
                         response = g_model.generate_content(prompt)
                         if response and response.text:
                             parsed = self._clean_and_parse_json(response.text)
                             if parsed and parsed.get("headline"):
-                                print(f"[NewsSynthesizer] Successfully synthesized news via Google Gemini ({model_name})!")
+                                print(f"[NewsSynthesizer] Successfully synthesized news via Google Gemini ({model_name}) on Key #{key_round + 1}!")
                                 return parsed
                     except Exception as gem_err:
-                        logger.warning(f"[NewsSynthesizer] Gemini model {model_name} attempt error: {gem_err}")
-                        coordinator.advance_key_round_robin()
+                        logger.warning(f"[NewsSynthesizer] Gemini key #{key_round + 1} ({model_name}) error: {gem_err}")
                         continue
+
+                # Advance to next Google key if all models on this key hit rate-limits
+                coordinator.advance_key_round_robin()
         except Exception as e:
             logger.warning(f"[NewsSynthesizer] Gemini Pool unavailable: {e}")
 
