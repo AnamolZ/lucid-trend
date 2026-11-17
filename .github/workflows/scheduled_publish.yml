@@ -176,9 +176,22 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
             git commit -m "chore(cdn): publish new editorial dispatches and baked audio"
-            # Pull latest changes with rebase to avoid race conditions with other workflows
-            git pull --rebase origin main || true
-            git push origin main
+            # Resilient retry loop with rebase and jitter to eliminate push collisions
+            pushed=false
+            for i in {1..5}; do
+              echo "Push attempt $i of 5..."
+              git pull --rebase origin main || true
+              if git push origin main; then
+                pushed=true
+                break
+              fi
+              echo "Push rejected due to concurrent commit, sleeping before retry..."
+              sleep $(( (RANDOM % 5) + 3 ))
+            done
+            if [ "$pushed" = "false" ]; then
+              echo "Failed to push after 5 attempts."
+              exit 1
+            fi
             echo "Successfully deployed new static dispatches to Vercel CDN Edge!"
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
