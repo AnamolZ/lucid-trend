@@ -163,7 +163,9 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
                 fcm_data["description"] = fcm_data.get("description", "")[:100]
                 fcm_data["excerpt"] = fcm_data.get("excerpt", "")[:100]
 
-            post_tag = str(post_id or "").strip()
+            # Fixed single collapse_key and tag ensures Android/FCM continuously updates
+            # the single existing notification in place, preventing multiple notification spam.
+            single_notification_tag = "newspluk_live_dispatch"
             message = messaging.Message(
                 topic=target_topic,
                 notification=messaging.Notification(
@@ -173,10 +175,10 @@ def send_push_notification(title: str, body: str = "", post_id: str = None, topi
                 data=fcm_data,
                 android=messaging.AndroidConfig(
                     priority="high",
-                    collapse_key=post_tag if post_tag else None,
+                    collapse_key=single_notification_tag,
                     notification=messaging.AndroidNotification(
                         channel_id="dispatches",
-                        tag=post_tag if post_tag else None,
+                        tag=single_notification_tag,
                         sound="default",
                         priority="high",
                         default_vibrate_timings=True,
