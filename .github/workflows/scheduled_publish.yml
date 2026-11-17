@@ -219,7 +219,7 @@ jobs:
         run: |
           uv run python tools/cleanup_vercel.py
 
-      - name: Auto-Prune Old Workflows (Retain Only Latest 5)
+      - name: Auto-Prune Old Workflows (Retain Exactly Latest 3 Runs)
         if: success()
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
@@ -239,25 +239,27 @@ jobs:
             };
             (async () => {
               try {
-                const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=100`, { headers });
+                const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/scheduled_publish.yml/runs?per_page=100`, { headers });
                 if (!res.ok) {
                   console.log(`[WorkflowPruner] Failed to fetch runs: ${res.status}`);
                   return;
                 }
                 const data = await res.json();
                 const runs = data.workflow_runs || [];
-                if (runs.length <= 5) {
-                  console.log(`[WorkflowPruner] Total runs (${runs.length}) <= 5. No pruning needed.`);
+                // If 3 or fewer runs exist, do not delete any
+                if (runs.length <= 3) {
+                  console.log(`[WorkflowPruner] Total runs (${runs.length}) <= 3. No pruning needed.`);
                   return;
                 }
-                const toPrune = runs.slice(5);
-                console.log(`[WorkflowPruner] Keeping latest 5 runs. Deleting ${toPrune.length} older run(s)...`);
+                // When count reaches 4 or more, keep the latest 3 and prune the older ones
+                const toPrune = runs.slice(3);
+                console.log(`[WorkflowPruner] Total runs (${runs.length}) > 3. Retaining latest 3, deleting ${toPrune.length} older run(s)...`);
                 let count = 0;
                 for (const r of toPrune) {
                   const del = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${r.id}`, { method: "DELETE", headers });
                   if (del.status === 204 || del.status === 200) count++;
                 }
-                console.log(`[WorkflowPruner] Cleaned up ${count} older workflow run(s). Exactly 5 remain.`);
+                console.log(`[WorkflowPruner] Cleaned up ${count} older workflow run(s). Exactly 3 remain.`);
               } catch (err) {
                 console.log("[WorkflowPruner] Error:", err.message);
               }

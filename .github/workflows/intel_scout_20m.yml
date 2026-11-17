@@ -115,17 +115,15 @@ jobs:
           sleep 15
           uv run python -c "from service.notifications.push_service import send_latest_dispatches_push; count = send_latest_dispatches_push(limit=1); print(f'Dispatched rich push for {count} articles.')"
 
-      - name: Auto-Prune Old Runs (Retain Only Latest Run)
+      - name: Auto-Prune Old Runs (Retain Exactly Latest 3 Runs)
         if: success()
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           node -e '
             const token = process.env.GH_TOKEN;
             const repo = process.env.REPO;
-            const currentRunId = process.env.CURRENT_RUN_ID;
             if (!token || !repo) {
               console.log("[WorkflowPruner] No GH_TOKEN or REPO found, skipping.");
               process.exit(0);
@@ -145,21 +143,22 @@ jobs:
                 }
                 const data = await res.json();
                 const runs = data.workflow_runs || [];
-                // Target all previous runs (completed, failed, or older) except the current executing run
-                const previousRuns = runs.filter(r => String(r.id) !== String(currentRunId));
-                if (previousRuns.length === 0) {
-                  console.log("[WorkflowPruner] No previous runs to delete. Working tree is clean.");
+                // If 3 or fewer runs exist, do not delete any
+                if (runs.length <= 3) {
+                  console.log(`[WorkflowPruner] Total runs (${runs.length}) <= 3. No pruning needed.`);
                   return;
                 }
-                console.log(`[WorkflowPruner] Deleting ${previousRuns.length} previous run(s) to keep workflow history pristine...`);
+                // When count reaches 4 or more, keep the latest 3 and prune the older ones
+                const toPrune = runs.slice(3);
+                console.log(`[WorkflowPruner] Total runs (${runs.length}) > 3. Retaining latest 3, deleting ${toPrune.length} older run(s)...`);
                 let deletedCount = 0;
-                for (const r of previousRuns) {
+                for (const r of toPrune) {
                   const del = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${r.id}`, { method: "DELETE", headers });
                   if (del.status === 204 || del.status === 200) {
                     deletedCount++;
                   }
                 }
-                console.log(`[WorkflowPruner] Successfully deleted ${deletedCount} previous workflow run(s). Clean!`);
+                console.log(`[WorkflowPruner] Successfully deleted ${deletedCount} older workflow run(s). Exactly 3 remain.`);
               } catch (err) {
                 console.log("[WorkflowPruner] Error:", err.message);
               }
