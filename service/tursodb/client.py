@@ -381,6 +381,55 @@ class TursoDBService:
 
         return {"updated": len(statements), "added": added, "removed": removed}
 
+    def fetch_unnotified_post(self) -> dict:
+        """Retrieves the latest published article that has not yet had a push notification broadcasted."""
+        if not self.http_url:
+            return None
+        sql = """
+            SELECT id, title, slug, description, content, image, thumbnail,
+                   category, author, source, published_at, created_at, audio_url
+            FROM posts
+            WHERE notified_at IS NULL
+            ORDER BY published_at DESC, id DESC
+            LIMIT 1;
+        """
+        try:
+            res = self.execute(sql)
+            results = res.get("results", [])
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                cols = [c["name"] for c in results[0].get("response", {}).get("result", {}).get("cols", [])]
+                if rows:
+                    row = rows[0]
+                    post_dict = {}
+                    for col_idx, col_name in enumerate(cols):
+                        val_obj = row[col_idx]
+                        val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                        if col_name in ("category", "author") and isinstance(val, str) and (val.startswith("[") or val.startswith("{")):
+                            try:
+                                post_dict[col_name] = json.loads(val)
+                            except Exception:
+                                post_dict[col_name] = val
+                        else:
+                            post_dict[col_name] = val
+                    return post_dict
+        except Exception as e:
+            logging.error(f"[TursoDB] Error fetching unnotified post: {e}")
+        return None
+
+    def mark_post_notified(self, post_id: str) -> bool:
+        """Records notified_at timestamp for a post so it is never notified again."""
+        if not self.http_url or not post_id:
+            return False
+        sql = "UPDATE posts SET notified_at = CURRENT_TIMESTAMP WHERE id = ?;"
+        try:
+            self.execute(sql, [str(post_id)])
+            logging.info(f"[TursoDB] Marked post '{post_id}' as notified_at.")
+            return True
+        except Exception as e:
+            logging.error(f"[TursoDB] Error marking post '{post_id}' as notified: {e}")
+            return False
+
     def insert_shorts(self, shorts_documents: list) -> list:
         """Persists short-form card documents into Turso 'shorts' table."""
         if not self.http_url or not shorts_documents:

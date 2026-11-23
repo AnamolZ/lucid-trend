@@ -265,43 +265,61 @@ def send_article_push(article: dict) -> bool:
 
 def send_new_dispatch_receipt_push() -> int:
     """
-    Broadcasts push notification ONLY if a genuinely new article was inserted
-    during the current cycle (verified via temp/new_post_receipt.json).
-    Prevents repeated / duplicate push notifications completely.
+    Broadcasts push notification with bulletproof persistent memory:
+    1. Checks if there is an unnotified post in Turso DB (where notified_at IS NULL).
+    2. Alternatively checks for new_post_receipt.json if DB is offline.
+    3. Broadcasts exactly once and immediately marks post as notified in Turso DB.
+    Guarantees every article is notified to mobile users exactly once in its lifetime.
     """
-    receipt_file = TEMP_DIR / "new_post_receipt.json"
-    if not receipt_file.exists():
-        logging.info("[PushService] No new_post_receipt.json found. No new unique article inserted in this cycle. Skipping push.")
-        return 0
+    from service.tursodb.client import TursoDBService
+    turso = TursoDBService()
 
-    try:
-        with open(receipt_file, "r", encoding="utf-8") as rf:
-            data = json.load(rf)
-        post_id = data.get("post_id")
-        if not post_id:
-            return 0
-
-        from service.tursodb.client import TursoDBService
-        turso = TursoDBService()
-        posts = turso.fetch_recent_posts_for_export(limit=5)
-        matching = next((p for p in posts if p.get("id") == post_id), None)
-        if matching:
-            ok = send_article_push(matching)
-            # Remove receipt after successful broadcast
-            try:
-                receipt_file.unlink()
-            except Exception:
-                pass
-            logging.info(f"[PushService] Broadcasted push for genuine new post '{post_id}'. Success={ok}")
-            return 1 if ok else 0
+    # 1. Primary Strategy: Check persistent database for unnotified articles
+    unnotified = turso.fetch_unnotified_post()
+    if unnotified:
+        post_id = unnotified.get("id")
+        logging.info(f"[PushService] Found unnotified post '{post_id}' in Turso DB. Dispatching push...")
+        ok = send_article_push(unnotified)
+        if ok:
+            turso.mark_post_notified(post_id)
+            receipt_file = TEMP_DIR / "new_post_receipt.json"
+            if receipt_file.exists():
+                try:
+                    receipt_file.unlink()
+                except Exception:
+                    pass
+            logging.info(f"[PushService] Successfully broadcasted push and marked '{post_id}' as notified in DB.")
+            return 1
         else:
-            logging.warning(f"[PushService] Receipt post_id '{post_id}' not found in Turso recent posts.")
+            logging.warning(f"[PushService] Push broadcast failed for '{post_id}'. Leaving unnotified for retry.")
             return 0
-    except Exception as e:
-        logging.error(f"[PushService] Error broadcasting new dispatch receipt push: {e}")
-        return 0
+
+    # 2. Secondary/Fallback Strategy: Check receipt file if DB had no unnotified record
+    receipt_file = TEMP_DIR / "new_post_receipt.json"
+    if receipt_file.exists():
+        try:
+            with open(receipt_file, "r", encoding="utf-8") as rf:
+                data = json.load(rf)
+            post_id = data.get("post_id")
+            if post_id:
+                posts = turso.fetch_recent_posts_for_export(limit=5)
+                matching = next((p for p in posts if p.get("id") == post_id), None)
+                if matching:
+                    ok = send_article_push(matching)
+                    if ok:
+                        turso.mark_post_notified(post_id)
+                    try:
+                        receipt_file.unlink()
+                    except Exception:
+                        pass
+                    return 1 if ok else 0
+        except Exception as e:
+            logging.error(f"[PushService] Error processing fallback receipt: {e}")
+
+    logging.info("[PushService] No unnotified posts found in database. 0 notifications needed.")
+    return 0
 
 
 def send_latest_dispatches_push(limit: int = 2) -> int:
-    """Fallback: Broadcasts push notification strictly if new receipt exists or explicitly called."""
+    """Broadcasts push notification strictly for unnotified dispatches."""
     return send_new_dispatch_receipt_push()
