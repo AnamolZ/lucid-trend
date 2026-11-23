@@ -1,9 +1,10 @@
 name: Autonomous 20-Min Social Intel & Shorts Pipeline
 
 on:
-  # PAUSED: Cron schedule temporarily disabled until next release plan
-  # schedule:
-  #   - cron: '5,25,45 * * * *'
+  schedule:
+    # Trigger every 20 minutes (:05, :25, :45 past every hour)
+    # Exits in 5s with 0 quota if no fresh Instagram posts exist today
+    - cron: '5,25,45 * * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -13,7 +14,8 @@ on:
         type: boolean
 
 concurrency:
-  group: intel-pipeline
+  # Shared production queue: if both workflows trigger at same time, this waits cleanly
+  group: newspluk-production-publishing-pipeline
   cancel-in-progress: false
 
 jobs:

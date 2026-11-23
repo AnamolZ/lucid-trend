@@ -39,29 +39,13 @@ def run_pipeline() -> None:
     if new_items:
         print(f"\n[+] Extracting text from {len(new_items)} new post(s)...")
         extracted_texts = ocr.process_items(new_items)
-
-    # Resilient Autonomous Fallback: If Instagram blocks cloud IP, scout verified breaking market news
-    if not extracted_texts:
-        print("\n[!] Social media feed returned no fresh items. Engaging real-time verified intelligence scout...")
-        queries = [
-            "crypto market bitcoin ethereum",
-            "wall street stock market nvidia tech",
-            "federal reserve interest rates inflation",
-            "ai artificial intelligence developments",
-        ]
-        scouted = scout_category_intel("Finance", queries, max_items=12)
-        if scouted:
-            print(f"[+] Scouted {len(scouted)} verified breaking developments.")
-            for s in scouted:
-                extracted_texts.append(f"Headline: {s['title']}\nSnippet: {s.get('snippet', '')}\nSource: {s.get('source', '')}")
-        else:
-            cached = get_recent_intel(limit=15)
-            if cached:
-                print("\n[+] Utilizing recent intelligence from local database...")
-                extracted_texts = [p["text"] for p in cached]
+    else:
+        print("\n[+] Zero new Instagram posts found for today in this 20-minute cycle.")
+        print("[+] Sleeping cleanly without consuming AI or Cloudflare quota. Next scan in 20 minutes.")
+        return
 
     if not extracted_texts:
-        print("[!] No intelligence data available to synthesize.")
+        print("[!] No intelligence text could be extracted from new items. Exiting.")
         return
 
     combined_text = "\n---\n".join(extracted_texts)
