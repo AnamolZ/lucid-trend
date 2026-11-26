@@ -236,12 +236,11 @@ def send_article_push(article: dict) -> bool:
 
     raw_author = article.get("author")
     if isinstance(raw_author, dict):
-        author_name = str(raw_author.get("name", "Anamol Dhakal"))[:50]
-        default_role = "Researcher" if "Bina" in author_name else "Backend System Developer"
-        author_role = str(raw_author.get("role", default_role))[:50]
+        author_name = str(raw_author.get("name", "Lucid"))[:50]
+        author_role = str(raw_author.get("role", "NewsPluk AI Editor & Chief Intelligence Officer"))[:60]
     else:
-        author_name = str(raw_author or "Anamol Dhakal")[:50]
-        author_role = "Researcher" if "Bina" in author_name else "Backend System Developer"
+        author_name = str(raw_author or "Lucid")[:50]
+        author_role = "NewsPluk AI Editor & Chief Intelligence Officer"
 
     read_time = str(article.get("readingTime") or article.get("reading_time") or article.get("readTime") or "3 min")[:15]
     pub_date = str(article.get("published_at") or article.get("date") or article.get("created_at") or "")[:35]

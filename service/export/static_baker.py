@@ -15,10 +15,42 @@ def calculate_reading_time(content: str) -> str:
     return f"{minutes} min"
 
 
-AUTHORS_ROTATION = [
-    {"name": "Anamol Dhakal", "role": "Backend System Developer", "avatar": "https://newspluk.com/avatar-anamol.webp"},
-    {"name": "Bina Pokhrel", "role": "Researcher", "avatar": "https://newspluk.com/avatar-bina.webp"}
-]
+AUTHORS_BY_CATEGORY = {
+    "AI & ML": {
+        "name": "Nexus",
+        "role": "NewsPluk AI & Machine Intelligence Editor",
+        "avatar": "https://newspluk.com/avatar-nexus.webp"
+    },
+    "Advancement": {
+        "name": "Aether",
+        "role": "NewsPluk AI Advancement & Technology Editor",
+        "avatar": "https://newspluk.com/avatar-aether.webp"
+    },
+    "Geopolitics & Defense": {
+        "name": "Echo",
+        "role": "NewsPluk AI Geopolitics & Defense Editor",
+        "avatar": "https://newspluk.com/avatar-echo.webp"
+    },
+    "Finance & Markets": {
+        "name": "Lucid",
+        "role": "NewsPluk AI Finance & Markets Editor",
+        "avatar": "https://newspluk.com/avatar-lucid.webp"
+    }
+}
+DEFAULT_AUTHOR = AUTHORS_BY_CATEGORY["Finance & Markets"]
+
+def get_author_for_category(categories):
+    cats = categories if isinstance(categories, list) else [str(categories)]
+    cat_str = " ".join(cats).lower()
+    if "ai & ml" in cat_str or "artificial intelligence" in cat_str:
+        return AUTHORS_BY_CATEGORY["AI & ML"]
+    if "advancement" in cat_str or "tech" in cat_str:
+        return AUTHORS_BY_CATEGORY["Advancement"]
+    if "geopolitics" in cat_str or "defense" in cat_str:
+        return AUTHORS_BY_CATEGORY["Geopolitics & Defense"]
+    return AUTHORS_BY_CATEGORY["Finance & Markets"]
+
+AUTHORS_ROTATION = list(AUTHORS_BY_CATEGORY.values())
 
 
 def extract_and_save_image(post_id: str, image_data: str, target_dirs: list) -> str:
@@ -179,16 +211,18 @@ def bake_static_payloads(target_dirs: list = None, limit: int = 750, feed_limit:
         )
         category = TursoDBService.normalize_breaking_news_categories(item.get("category", ["General"]), is_breaking=is_breaking)
         raw_author = item.get("author")
-        if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") != "NewsPluk Editorial":
+        cat_author = get_author_for_category(category)
+        if isinstance(raw_author, dict) and raw_author.get("name") and raw_author.get("name") not in ["NewsPluk Editorial", "Bina Pokhrel", "Anamol Dhakal"]:
             author = dict(raw_author)
-            if "Bina" in author.get("name", ""):
-                author["role"] = author.get("role") or "Researcher"
-                author["avatar"] = "https://newspluk.com/avatar-bina.webp"
-            elif "Anamol" in author.get("name", ""):
-                author["role"] = author.get("role") or "Backend System Developer"
-                author["avatar"] = "https://newspluk.com/avatar-anamol.webp"
+            auth_name = author.get("name", "")
+            if auth_name in ["Lucid", "Aether", "Echo", "Nexus"]:
+                matched = next((a for a in AUTHORS_ROTATION if a["name"] == auth_name), cat_author)
+                author["role"] = matched["role"]
+                author["avatar"] = matched["avatar"]
+            else:
+                author = cat_author
         else:
-            author = AUTHORS_ROTATION[idx % len(AUTHORS_ROTATION)]
+            author = cat_author
         audio_url = item.get("audio_url") or f"/audio/{post_id}.m4a"
 
         # Transform heavy base64 images into flat edge assets

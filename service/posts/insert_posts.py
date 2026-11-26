@@ -68,19 +68,41 @@ TOPIC_FALLBACK_POOLS = {
     ]
 }
 
-AUTHORS = [
-    {
-        "name": "Anamol Dhakal",
-        "role": "Backend System Developer",
-        "avatar": "https://newspluk.com/avatar-anamol.webp"
+AUTHORS_BY_CATEGORY = {
+    "AI & ML": {
+        "name": "Nexus",
+        "role": "NewsPluk AI & Machine Intelligence Editor",
+        "avatar": "https://newspluk.com/avatar-nexus.webp",
     },
-    {
-        "name": "Bina Pokhrel",
-        "role": "Researcher",
-        "avatar": "https://newspluk.com/avatar-bina.webp"
-    }
-]
-AUTHOR = AUTHORS[0]
+    "Advancement": {
+        "name": "Aether",
+        "role": "NewsPluk AI Advancement & Technology Editor",
+        "avatar": "https://newspluk.com/avatar-aether.webp",
+    },
+    "Geopolitics & Defense": {
+        "name": "Echo",
+        "role": "NewsPluk AI Geopolitics & Defense Editor",
+        "avatar": "https://newspluk.com/avatar-echo.webp",
+    },
+    "Finance & Markets": {
+        "name": "Lucid",
+        "role": "NewsPluk AI Finance & Markets Editor",
+        "avatar": "https://newspluk.com/avatar-lucid.webp",
+    },
+}
+AUTHORS = list(AUTHORS_BY_CATEGORY.values())
+AUTHOR = AUTHORS_BY_CATEGORY["Finance & Markets"]
+
+def get_author_for_category(categories):
+    cats = categories if isinstance(categories, list) else [str(categories)]
+    cat_str = " ".join(cats).lower()
+    if "ai & ml" in cat_str or "artificial intelligence" in cat_str:
+        return AUTHORS_BY_CATEGORY["AI & ML"]
+    if "advancement" in cat_str or "tech" in cat_str:
+        return AUTHORS_BY_CATEGORY["Advancement"]
+    if "geopolitics" in cat_str or "defense" in cat_str:
+        return AUTHORS_BY_CATEGORY["Geopolitics & Defense"]
+    return AUTHORS_BY_CATEGORY["Finance & Markets"]
 _image_synthesis_lock = threading.Lock()
 
 
@@ -194,7 +216,7 @@ def insert_posts(data_or_path, model=None, with_image: bool = True) -> list:
             category=item.get("category"),
             post_id=post_id or ""
         )
-        assigned_author = item.get("author") or AUTHORS[(author_offset + idx) % len(AUTHORS)]
+        assigned_author = item.get("author") or get_author_for_category(item.get("category"))
         doc = {
             **item,
             "image": item.get("image") or fallback_img,

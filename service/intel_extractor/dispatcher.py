@@ -24,18 +24,40 @@ APPROVED_CATEGORIES = [
     "Geopolitics & Defense",
 ]
 
-AUTHORS = [
-    {
-        "name": "Anamol Dhakal",
-        "role": "Backend System Developer",
-        "avatar": "https://newspluk.com/avatar-anamol.webp",
+AUTHORS_BY_CATEGORY = {
+    "AI & ML": {
+        "name": "Nexus",
+        "role": "NewsPluk AI & Machine Intelligence Editor",
+        "avatar": "https://newspluk.com/avatar-nexus.webp",
     },
-    {
-        "name": "Bina Pokhrel",
-        "role": "Researcher",
-        "avatar": "https://newspluk.com/avatar-bina.webp",
+    "Advancement": {
+        "name": "Aether",
+        "role": "NewsPluk AI Advancement & Technology Editor",
+        "avatar": "https://newspluk.com/avatar-aether.webp",
     },
-]
+    "Geopolitics & Defense": {
+        "name": "Echo",
+        "role": "NewsPluk AI Geopolitics & Defense Editor",
+        "avatar": "https://newspluk.com/avatar-echo.webp",
+    },
+    "Finance & Markets": {
+        "name": "Lucid",
+        "role": "NewsPluk AI Finance & Markets Editor",
+        "avatar": "https://newspluk.com/avatar-lucid.webp",
+    },
+}
+AUTHORS = list(AUTHORS_BY_CATEGORY.values())
+
+def get_author_for_category(categories):
+    cats = categories if isinstance(categories, list) else [str(categories)]
+    cat_str = " ".join(cats).lower()
+    if "ai & ml" in cat_str or "artificial intelligence" in cat_str:
+        return AUTHORS_BY_CATEGORY["AI & ML"]
+    if "advancement" in cat_str or "tech" in cat_str:
+        return AUTHORS_BY_CATEGORY["Advancement"]
+    if "geopolitics" in cat_str or "defense" in cat_str:
+        return AUTHORS_BY_CATEGORY["Geopolitics & Defense"]
+    return AUTHORS_BY_CATEGORY["Finance & Markets"]
 
 
 def slugify(text: str) -> str:
@@ -269,14 +291,7 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
     now_iso = datetime.now(timezone.utc).isoformat()
     lead_temp_image = TEMP_DIR / "lead_editorial.jpg"
 
-    # Determine author rotation from local cache
-    author_idx = 0
-    if cached_recent:
-        last_auth = cached_recent[0].get("author", {})
-        last_name = last_auth.get("name") if isinstance(last_auth, dict) else str(last_auth)
-        if "Anamol" in last_name:
-            author_idx = 1
-    assigned_author = AUTHORS[author_idx]
+    assigned_author = AUTHORS[0]
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     clean_slug = slugify(headline)
@@ -318,6 +333,7 @@ def dispatch_synthesized_news(payload: Dict) -> bool:
     full_content = build_longform_multinews_content(headline, executive_summary, unique_news_items)
     image_prompt = build_breaking_news_image_prompt(headline)
     categories = map_to_approved_categories(unique_news_items)
+    assigned_author = get_author_for_category(categories)
 
     post_doc = {
         "id": post_id,

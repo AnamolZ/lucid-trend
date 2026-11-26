@@ -201,8 +201,8 @@ class TursoDBService:
         logging.info(f"[TursoDB] Fetched {len(posts)} existing posts.")
         return posts
 
-    def fetch_recent_posts_for_export(self, limit: int = 750) -> list:
-        """Retrieves full article objects sorted by published_at DESC for static JSON baking."""
+    def fetch_recent_posts_for_export(self, limit: int = 56) -> list:
+        """Retrieves full article objects sorted by published_at DESC for static JSON baking (paginated in chunks to avoid Hrana response limits)."""
         if not self.http_url:
             return []
         sql = """
@@ -210,15 +210,24 @@ class TursoDBService:
                    image_prompt, audio_url, category, author, source, published_at, created_at
             FROM posts
             ORDER BY published_at DESC, id DESC
-            LIMIT ?;
+            LIMIT ? OFFSET ?;
         """
-        res = self.execute(sql, [limit])
         posts = []
-        try:
-            results = res.get("results", [])
-            if results:
+        chunk_size = 30
+        offset = 0
+        target_limit = min(limit, 100) if limit else 56
+
+        while len(posts) < target_limit:
+            current_fetch = min(chunk_size, target_limit - len(posts))
+            res = self.execute(sql, [current_fetch, offset])
+            try:
+                results = res.get("results", [])
+                if not results or results[0].get("type") == "error":
+                    break
                 rows = results[0].get("response", {}).get("result", {}).get("rows", [])
                 cols = [c["name"] for c in results[0].get("response", {}).get("result", {}).get("cols", [])]
+                if not rows:
+                    break
                 for row in rows:
                     post_dict = {}
                     for col_idx, col_name in enumerate(cols):
@@ -232,8 +241,13 @@ class TursoDBService:
                         else:
                             post_dict[col_name] = val
                     posts.append(post_dict)
-        except Exception as e:
-            logging.error(f"[TursoDB] Error fetching posts for export: {e}")
+                offset += len(rows)
+                if len(rows) < current_fetch:
+                    break
+            except Exception as e:
+                logging.error(f"[TursoDB] Error fetching posts for export: {e}")
+                break
+
         return posts
 
     def get_verified_subscribers(self) -> list:
